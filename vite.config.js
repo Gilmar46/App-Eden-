@@ -6,7 +6,7 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
 
-  base: '/app-igreja/',
+  base: '/App-Eden-/',
 
   resolve: {
     alias: {
