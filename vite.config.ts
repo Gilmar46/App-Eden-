@@ -10,7 +10,7 @@ export default defineConfig(({ mode }) => {
     plugins: [react(), tailwindcss()],
 
     // 🔥 ESSA LINHA É O QUE FALTAVA
-    base: '/SEU-REPOSITORIO/',
+    base: '/APP-Eden/',
 
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
