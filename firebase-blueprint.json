@@ -1,0 +1,253 @@
+{
+  "entities": {
+    "Member": {
+      "title": "Member",
+      "description": "Church member information",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "avatar": { "type": "string" },
+        "role": { "type": "string" },
+        "ministry": { "type": "string" },
+        "status": { "type": "string", "enum": ["Ativo", "Visitante", "Líder"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "role", "ministry", "status"]
+    },
+    "Announcement": {
+      "title": "Announcement",
+      "description": "Church announcements and news",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "tag": { "type": "string" },
+        "date": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "tag", "date"]
+    },
+    "Scale": {
+      "title": "Scale",
+      "description": "Service schedule or scale",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "ministry": { "type": "string" },
+        "date": { "type": "string" },
+        "role": { "type": "string" },
+        "status": { "type": "string", "enum": ["confirmed", "pending", "declined"] }
+      },
+      "required": ["ministry", "date", "role", "status"]
+    },
+    "MissionCampaign": {
+      "title": "Mission Campaign",
+      "description": "Missionary targets and goals",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "totalGoal": { "type": "number" },
+        "collected": { "type": "number" },
+        "active": { "type": "boolean" },
+        "departments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "department": { "type": "string" },
+              "goal": { "type": "number" },
+              "collected": { "type": "number" }
+            }
+          }
+        }
+      },
+      "required": ["title", "totalGoal", "collected"]
+    },
+    "Transaction": {
+      "title": "Financial Transaction",
+      "description": "Tithes, offerings, and donations",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "amount": { "type": "number" },
+        "type": { "type": "string", "enum": ["Dízimo", "Oferta", "Missões"] },
+        "category": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["pending", "completed"] }
+      },
+      "required": ["amount", "type", "date", "status"]
+    },
+    "ChatRoom": {
+      "title": "Chat Room",
+      "description": "Direct or group chat room",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["direct", "group"] },
+        "name": { "type": "string" },
+        "participants": { "type": "array", "items": { "type": "string" } },
+        "lastMessage": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "ministry": { "type": "string" }
+      },
+      "required": ["type", "participants", "updatedAt"]
+    },
+    "ChatMessage": {
+      "title": "Chat Message",
+      "description": "Message within a chat room",
+      "type": "object",
+      "properties": {
+        "roomId": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "senderAvatar": { "type": "string" },
+        "text": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["roomId", "senderId", "text", "createdAt"]
+    },
+    "DevotionalVideo": {
+      "title": "Devotional Video",
+      "description": "Short devotional videos created by members",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorId": { "type": "string" },
+        "videoUrl": { "type": "string" },
+        "thumbnailUrl": { "type": "string" },
+        "description": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "authorName", "videoUrl", "createdAt"]
+    },
+    "PrayerRequest": {
+      "title": "Prayer Request",
+      "description": "Prayer requests shared by the community",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorId": { "type": "string" },
+        "isAnonymous": { "type": "boolean" },
+        "prayerCount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["content", "authorName", "authorId", "createdAt"]
+    },
+    "AgendaItem": {
+      "title": "Agenda Item",
+      "description": "Church events and services",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "time": { "type": "string" },
+        "date": { "type": "string" },
+        "description": { "type": "string" },
+        "location": { "type": "string" },
+        "type": { "type": "string" },
+        "isFeatured": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "time", "date", "createdAt"]
+    },
+    "Course": {
+      "title": "Course",
+      "description": "Church courses and training tracks",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "info": { "type": "string" },
+        "duration": { "type": "string" },
+        "status": { "type": "string", "enum": ["Inscrições Abertas", "Em breve", "Encerrado"] },
+        "thumbnail": { "type": "string" },
+        "category": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "description", "duration", "status"]
+    },
+    "Enrollment": {
+      "title": "Enrollment",
+      "description": "User enrollment in a course",
+      "type": "object",
+      "properties": {
+        "courseId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "active", "completed"] },
+        "progress": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["courseId", "userId", "status", "createdAt"]
+    },
+    "DigitalBulletin": {
+      "title": "Digital Bulletin",
+      "description": "AI-generated service summary and spiritual plan",
+      "type": "object",
+      "properties": {
+        "theme": { "type": "string" },
+        "preacher": { "type": "string" },
+        "date": { "type": "string" },
+        "jsonContent": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["theme", "preacher", "jsonContent", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/bulletins/{bulletinId}": {
+      "schema": "DigitalBulletin",
+      "description": "Historical church bulletins"
+    },
+    "/members/{memberId}": {
+      "schema": "Member",
+      "description": "Collection of church members"
+    },
+    "/announcements/{announcementId}": {
+      "schema": "Announcement",
+      "description": "Collection of church notices"
+    },
+    "/scales/{scaleId}": {
+      "schema": "Scale",
+      "description": "Collection of service schedules"
+    },
+    "/missions/{campaignId}": {
+      "schema": "MissionCampaign",
+      "description": "Missionary campaigns and goals"
+    },
+    "/financial/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Financial records"
+    },
+    "/chatRooms/{roomId}": {
+      "schema": "ChatRoom",
+      "description": "Communication channels"
+    },
+    "/chatRooms/{roomId}/messages/{messageId}": {
+      "schema": "ChatMessage",
+      "description": "Messages for a specific room"
+    },
+    "/devotionals/{devotionalId}": {
+      "schema": "DevotionalVideo",
+      "description": "Member-created devotional videos"
+    },
+    "/prayers/{prayerId}": {
+      "schema": "PrayerRequest",
+      "description": "Community prayer wall"
+    },
+    "/agenda/{agendaId}": {
+      "schema": "AgendaItem",
+      "description": "Church schedule"
+    },
+    "/courses/{courseId}": {
+      "schema": "Course",
+      "description": "Educational courses"
+    },
+    "/enrollments/{enrollmentId}": {
+      "schema": "Enrollment",
+      "description": "Student course registrations"
+    }
+  }
+}
