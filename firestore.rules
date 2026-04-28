@@ -1,135 +1,160 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // --- Helpers ---
-    function isSignedIn() {
-      return request.auth != null;
+    // 0. Default Deny
+    match /{document=**} {
+      allow read, write: if false;
     }
 
-    function isAdmin() {
+    // Phase 3: Primitives
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function isSignedIn() { return request.auth != null; }
+    function isVerified() { return isSignedIn() && (request.auth.token.email_verified == true || request.auth.token.firebase.sign_in_provider == 'google.com'); }
+    
+    // Helper to get member data safely
+    function getMemberData(uid) {
+      return get(/databases/$(database)/documents/members/$(uid)).data;
+    }
+    
+    function getUserType() {
+      // Use exists to avoid error if member doc doesn't exist yet
+      return exists(/databases/$(database)/documents/members/$(request.auth.uid)) 
+        ? getMemberData(request.auth.uid).get('userType', 'membro')
+        : 'membro';
+    }
+    
+    function getUserDept() {
+      return exists(/databases/$(database)/documents/members/$(request.auth.uid))
+        ? getMemberData(request.auth.uid).get('departmentId', '')
+        : '';
+    }
+    
+    function isAdmin() { 
       return isSignedIn() && (
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
-        request.auth.token.email == 'gilmarcoutobrito@gmail.com'
-      );
+        request.auth.token.email == 'gilmarcoutobrito@gmail.com' ||
+        getUserType() == 'admin'
+      ); 
     }
+    
+    function isLider() { return isSignedIn() && (getUserType() == 'lider' || isAdmin()); }
+    function isMembro() { return isSignedIn() && (getUserType() == 'membro' || isLider()); }
+    
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
 
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
-    // --- Validations ---
+    // Pillar 2 & 5: Validation Blueprints
     function isValidMember(data) {
-      return data.name is string && data.name.size() > 0 &&
-             data.role is string &&
-             data.ministry is string;
+      return data.keys().hasAll(['name', 'role', 'ministry', 'status', 'userType']) &&
+             data.name is string && data.name.size() <= 100 &&
+             data.role is string && data.role.size() <= 100 &&
+             data.userType in ['admin', 'lider', 'membro'];
     }
 
-    function isValidAnnouncement(data) {
-      return data.title is string && data.title.size() > 0;
+    function isValidComment(data) {
+      return data.keys().hasAll(['contentId', 'userId', 'userName', 'text', 'createdAt']) &&
+             data.userId == request.auth.uid &&
+             data.text is string && data.text.size() <= 1000 &&
+             data.createdAt == request.time;
     }
 
-    function isValidPrayer(data) {
-      return data.content is string && data.content.size() > 0 &&
-             data.authorId == request.auth.uid;
-    }
-
-    function isValidDevotional(data) {
-      return data.title is string && data.authorId == request.auth.uid;
-    }
-
-    function isValidTransaction(data) {
-      return data.amount is number && data.amount > 0 &&
-             data.userId == request.auth.uid;
-    }
-
-    // --- Public access ---
-    match /announcements/{id} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    match /agenda/{id} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    match /missions/{id} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    // --- Authenticated access ---
-    match /members/{id} {
+    // 1. Members Collection
+    match /members/{memberId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && (isAdmin() || isOwner(id));
+      allow create: if (isAdmin() || request.auth.uid == memberId) && isValidMember(incoming());
+      allow update: if (isAdmin() || (isLider() && existing().departmentId == getUserDept()) || request.auth.uid == memberId) && isValidMember(incoming());
       allow delete: if isAdmin();
     }
 
+    // 2. Announcements
+    match /announcements/{id} {
+      allow read: if isSignedIn();
+      allow create: if isLider() && (incoming().departmentId == getUserDept() || isAdmin());
+      allow update: if isLider() && (existing().departmentId == getUserDept() || isAdmin());
+      allow delete: if isLider() && (existing().departmentId == getUserDept() || isAdmin());
+    }
+
+    // 3. Comments
+    match /comments/{id} {
+      allow read: if isSignedIn();
+      allow create: if isVerified() && isValidComment(incoming());
+      allow delete: if isAdmin() || (isLider() && existing().departmentId == getUserDept()) || existing().userId == request.auth.uid;
+    }
+
+    // 4. Scales
     match /scales/{id} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
-      allow update: if isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+      allow create: if isLider() && (incoming().departmentId == getUserDept() || isAdmin());
+      allow update: if (isAdmin() || (isLider() && existing().departmentId == getUserDept()) || (isSignedIn() && incoming().memberId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['status'])));
+      allow delete: if isLider() && (existing().departmentId == getUserDept() || isAdmin());
     }
 
+    // 5. Prayers
     match /prayers/{id} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidPrayer(request.resource.data);
-      allow update: if isSignedIn() && (resource.data.authorId == request.auth.uid || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['prayerCount']));
-      allow delete: if isSignedIn() && (resource.data.authorId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn();
+      allow update: if isAdmin() || (isSignedIn() && incoming().diff(existing()).affectedKeys().hasOnly(['prayerCount']));
+      allow delete: if isAdmin() || existing().authorId == request.auth.uid;
     }
 
+    // 6. Devotionals
     match /devotionals/{id} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidDevotional(request.resource.data);
-      allow delete: if isSignedIn() && (resource.data.authorId == request.auth.uid || isAdmin());
+      allow create: if isVerified();
+      allow update: if isAdmin() || existing().authorId == request.auth.uid;
+      allow delete: if isAdmin() || existing().authorId == request.auth.uid;
     }
 
-    match /chatRooms/{id} {
-      allow read: if isSignedIn() && request.auth.uid in resource.data.participants;
-      allow create: if isSignedIn() && request.auth.uid in request.resource.data.participants;
-      allow update: if isSignedIn() && request.auth.uid in resource.data.participants;
-
-      match /messages/{mId} {
-        allow read: if isSignedIn() && request.auth.uid in get(/databases/$(database)/documents/chatRooms/$(id)).data.participants;
-        allow create: if isSignedIn() && request.auth.uid in get(/databases/$(database)/documents/chatRooms/$(id)).data.participants;
-      }
+    // 7. News (Admin only management)
+    match /newsCache/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+    match /newsFeedSources/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
     }
 
-    match /financial/{id} {
-      allow read: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
-      allow create: if isSignedIn() && isValidTransaction(request.resource.data);
+    // 8. User Profiles
+    match /userProfiles/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin() || isLider());
+      allow write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
     }
 
+    // Other Collections
+    match /bulletins/{id} { allow read: if isSignedIn(); allow write: if isAdmin(); }
+    match /missions/{id} { allow read: if isSignedIn(); allow write: if isAdmin(); }
+    match /agenda/{id} { allow read: if isSignedIn(); allow write: if isAdmin(); }
+    match /activityLogs/{id} { 
+      allow read: if isAdmin(); 
+      allow create: if isSignedIn(); 
+    }
+    match /config/{id} { 
+      allow read: if isSignedIn(); 
+      allow write: if isAdmin(); 
+    }
     match /admins/{id} {
       allow read: if isSignedIn();
-      allow write: if false;
+      allow write: if isAdmin();
     }
-
-    match /userProfiles/{id} {
-      allow read: if isSignedIn();
-      allow write: if isOwner(id);
+    match /financial/{id} { 
+      allow read: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid); 
+      allow create: if isSignedIn(); 
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
     }
-
-    match /enrollments/{id} {
-      allow read: if isSignedIn();
+    match /chatRooms/{id} { 
+      allow read: if isSignedIn() && (request.auth.uid in existing().participants || isAdmin() || (existing().get('ministry', '') != '' && isLider())); 
       allow create: if isSignedIn();
-      allow update, delete: if isAdmin();
+      allow update: if isSignedIn() && (request.auth.uid in existing().participants || isAdmin());
     }
-
-    match /bulletins/{id} {
-      allow read: if true;
-      allow write: if isAdmin();
+    match /chatRooms/{roomId}/messages/{id} { 
+      allow read: if isSignedIn() && (request.auth.uid in get(/databases/$(database)/documents/chatRooms/$(roomId)).data.participants || isAdmin());
+      allow create: if isSignedIn() && (request.auth.uid in get(/databases/$(database)/documents/chatRooms/$(roomId)).data.participants);
     }
-
-    match /config/{id} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    // Default deny catch-all
-    match /{document=**} {
-      allow read, write: if false;
+    match /courses/{id} { allow read: if isSignedIn(); allow write: if isAdmin(); }
+    match /enrollments/{id} { 
+      allow read: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin()); 
+      allow write: if isSignedIn() && (incoming().userId == request.auth.uid || isAdmin()); 
     }
   }
 }

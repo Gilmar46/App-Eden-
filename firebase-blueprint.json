@@ -10,9 +10,55 @@
         "role": { "type": "string" },
         "ministry": { "type": "string" },
         "status": { "type": "string", "enum": ["Ativo", "Visitante", "Líder"] },
+        "userType": { "type": "string", "enum": ["admin", "lider", "membro"] },
+        "departmentId": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["name", "role", "ministry", "status"]
+      "required": ["name", "role", "ministry", "status", "userType"]
+    },
+    "Comment": {
+      "title": "Comment",
+      "description": "User comments on content",
+      "type": "object",
+      "properties": {
+        "contentId": { "type": "string" },
+        "userId": { "type": "string" },
+        "departmentId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userAvatar": { "type": "string" },
+        "text": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["contentId", "userId", "text", "createdAt"]
+    },
+    "NewsFeedSource": {
+      "title": "News Feed Source",
+      "description": "RSS or API sources for church news",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "url": { "type": "string" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "url", "active"]
+    },
+    "NewsCache": {
+      "title": "News Cache",
+      "description": "Cached news items",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "link": { "type": "string" },
+        "image": { "type": "string" },
+        "pubDate": { "type": "string" },
+        "source": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "link", "createdAt"]
     },
     "Announcement": {
       "title": "Announcement",
@@ -22,6 +68,7 @@
         "title": { "type": "string" },
         "content": { "type": "string" },
         "tag": { "type": "string" },
+        "departmentId": { "type": "string" },
         "date": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
@@ -86,6 +133,7 @@
         "type": { "type": "string", "enum": ["direct", "group"] },
         "name": { "type": "string" },
         "participants": { "type": "array", "items": { "type": "string" } },
+        "departmentId": { "type": "string" },
         "lastMessage": { "type": "string" },
         "updatedAt": { "type": "string", "format": "date-time" },
         "ministry": { "type": "string" }
@@ -114,6 +162,7 @@
         "title": { "type": "string" },
         "authorName": { "type": "string" },
         "authorId": { "type": "string" },
+        "departmentId": { "type": "string" },
         "videoUrl": { "type": "string" },
         "thumbnailUrl": { "type": "string" },
         "description": { "type": "string" },
@@ -146,6 +195,7 @@
         "date": { "type": "string" },
         "description": { "type": "string" },
         "location": { "type": "string" },
+        "departmentId": { "type": "string" },
         "type": { "type": "string" },
         "isFeatured": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" }
@@ -181,6 +231,18 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["courseId", "userId", "status", "createdAt"]
+    },
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Extended information for a registered user",
+      "type": "object",
+      "properties": {
+        "interests": { "type": "array", "items": { "type": "string" } },
+        "completedSteps": { "type": "array", "items": { "type": "string" } },
+        "confirmedScales": { "type": "array", "items": { "type": "string" } },
+        "bio": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
     },
     "DigitalBulletin": {
       "title": "Digital Bulletin",
@@ -245,9 +307,25 @@
       "schema": "Course",
       "description": "Educational courses"
     },
+    "/userProfiles/{userId}": {
+      "schema": "UserProfile",
+      "description": "Extended user profile data"
+    },
     "/enrollments/{enrollmentId}": {
       "schema": "Enrollment",
       "description": "Student course registrations"
+    },
+    "/comments/{commentId}": {
+      "schema": "Comment",
+      "description": "User comments on content"
+    },
+    "/newsFeedSources/{sourceId}": {
+      "schema": "NewsFeedSource",
+      "description": "RSS/API sources for news"
+    },
+    "/newsCache/{cacheId}": {
+      "schema": "NewsCache",
+      "description": "Cached news items"
     }
   }
 }

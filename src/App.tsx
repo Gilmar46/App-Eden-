@@ -37,6 +37,7 @@ import {
   LogIn,
   Settings,
   Pencil,
+  Pin,
   Trash2,
   Church,
   Zap,
@@ -45,17 +46,35 @@ import {
   HelpCircle,
   MessageSquare,
   Shield,
+  ShieldCheck,
+  Smile,
   X,
+  ChevronLeft,
+  Sun,
+  Moon,
   Eye,
   EyeOff,
   Activity,
+  Play,
   TrendingUp,
   Droplets,
+  CalendarDays,
+  Flame,
+  LayoutGrid,
+  Sparkles,
+  ArrowRight,
+  Send,
+  UserCircle,
+  HandMetal,
+  Languages,
   Sprout,
   TreePine,
-  Flame,
-  Volume2
+  Volume2,
+  Download,
+  Printer,
+  UserX
 } from 'lucide-react';
+import html2pdf from 'html2pdf.js';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   signInWithPopup, 
@@ -85,7 +104,7 @@ import { useCollectionData, useCollection } from 'react-firebase-hooks/firestore
 import { auth, db } from './lib/firebase';
 
 // --- Types ---
-type View = 'home' | 'ministries' | 'agenda' | 'financial' | 'spiritual' | 'more' | 'members' | 'missions' | 'chat' | 'devotionals' | 'admin' | 'prayers' | 'lives' | 'guests' | 'courses' | 'locations' | 'profile';
+type View = 'home' | 'bible' | 'donations' | 'prayers' | 'profile' | 'ministries' | 'agenda' | 'financial' | 'spiritual' | 'more' | 'members' | 'missions' | 'chat' | 'devotionals' | 'admin' | 'lives' | 'guests' | 'courses' | 'locations' | 'announcements' | 'ai-chat' | 'news' | 'fake-news';
 
 interface Member {
   id: string;
@@ -94,7 +113,37 @@ interface Member {
   role: string;
   ministry: string;
   status: 'Ativo' | 'Visitante' | 'Líder';
+  userType?: 'admin' | 'lider' | 'membro';
+  departmentId?: string;
   email?: string;
+  phone?: string;
+}
+
+interface Comment {
+  id: string;
+  contentId: string;
+  userId: string;
+  userName: string;
+  userAvatar?: string;
+  text: string;
+  createdAt: any;
+}
+
+interface NewsItem {
+  id: string;
+  title: string;
+  description: string;
+  link: string;
+  image?: string;
+  pubDate: string;
+  source: string;
+}
+
+interface NewsSource {
+  id: string;
+  name: string;
+  url: string;
+  active: boolean;
 }
 
 interface DevotionalVideo {
@@ -103,6 +152,9 @@ interface DevotionalVideo {
   authorName: string;
   authorId: string;
   videoUrl: string;
+  videoId: string;
+  category: string;
+  type: string;
   thumbnailUrl?: string;
   description?: string;
   createdAt: any;
@@ -241,7 +293,14 @@ interface Scale {
   ministry: string;
   date: string;
   role: string;
-  status: 'confirmed' | 'pending' | 'declined';
+  memberId: string;
+  memberName: string;
+  memberAvatar?: string;
+  status: 'confirmed' | 'pending' | 'declined' | 'needs_replacement';
+  replacementId?: string;
+  replacementName?: string;
+  notes?: string;
+  createdAt: any;
 }
 
 // --- Components ---
@@ -276,30 +335,29 @@ const Logo = ({ size = 'md', className = '', glow = false }: { size?: 'sm' | 'md
       )}
       
       <motion.div 
-        whileHover={{ scale: 1.05, rotate: 0 }}
+        whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
-        className={`${sizes[size]} bg-gradient-to-tr from-slate-900 via-indigo-950 to-primary rounded-[32%] rotate-3 shadow-[0_20px_50px_rgba(79,70,229,0.3)] flex items-center justify-center relative overflow-hidden transition-all duration-500 ring-1 ring-white/10`}
+        className={`${sizes[size]} bg-primary rounded-[32%] shadow-sm flex items-center justify-center relative overflow-hidden transition-all duration-500`}
       >
         {/* Modern Glass Reflection */}
-        <div className="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-transparent opacity-50" />
-        <div className="absolute -top-1/2 -left-1/2 w-full h-full bg-white/5 rotate-45 pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-transparent opacity-30" />
         
         <motion.div 
-          initial={{ y: 20, opacity: 0 }}
+          initial={{ y: 10, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.2 }}
-          className="-rotate-3 flex items-center justify-center relative z-10"
+          className="flex items-center justify-center relative z-10"
         >
-          <Church className={`${iconSizes[size]} text-white drop-shadow-2xl`} strokeWidth={1.5} />
+          <Church className={`${iconSizes[size]} text-white`} strokeWidth={1.5} />
           
-          {/* Minimal Connection Nodes */}
+          {/* Minimal Connection Nodes - Accent color */}
           <div className="absolute inset-0 w-full h-full">
-            {[0, 90, 180, 270].map((rot, i) => (
+            {[0, 120, 240].map((rot, i) => (
               <motion.div
                 key={i}
-                animate={{ opacity: [0.2, 0.5, 0.2] }}
+                animate={{ opacity: [0.3, 0.8, 0.3] }}
                 transition={{ duration: 2, delay: i * 0.5, repeat: Infinity }}
-                className="absolute w-1 h-1 bg-white rounded-full"
+                className="absolute w-1 h-1 bg-accent rounded-full"
                 style={{ 
                   top: '50%', 
                   left: '50%', 
@@ -313,11 +371,11 @@ const Logo = ({ size = 'md', className = '', glow = false }: { size?: 'sm' | 'md
 
       {/* Floating Modern Badge */}
       <motion.div 
-        animate={{ y: [0, -5, 0] }}
+        animate={{ y: [0, -3, 0] }}
         transition={{ duration: 3, repeat: Infinity }}
-        className={`absolute -top-2 -right-2 ${size === 'sm' ? 'w-5 h-5' : (size === 'md' ? 'w-10 h-10' : 'w-14 h-14')} bg-white/80 backdrop-blur-md rounded-2xl flex items-center justify-center shadow-xl border border-white/50 z-20`}
+        className={`absolute -top-1 -right-1 ${size === 'sm' ? 'w-4 h-4' : (size === 'md' ? 'w-8 h-8' : 'w-12 h-12')} bg-white rounded-lg flex items-center justify-center shadow-sm border border-slate-100 z-20`}
       >
-        <Zap className={`${size === 'sm' ? 'w-2.5 h-2.5' : (size === 'md' ? 'w-5 h-5' : 'w-7 h-7')} text-primary fill-primary/10`} />
+        <Zap className={`${size === 'sm' ? 'w-2 h-2' : (size === 'md' ? 'w-4 h-4' : 'w-6 h-6')} text-accent fill-accent/10`} />
       </motion.div>
     </motion.div>
   );
@@ -326,28 +384,34 @@ const Logo = ({ size = 'md', className = '', glow = false }: { size?: 'sm' | 'md
 const NavItem = ({ icon: Icon, label, active, onClick }: { icon: any, label: string, active: boolean, onClick: () => void }) => (
   <button 
     onClick={onClick}
-    className={`flex-1 flex flex-col items-center justify-center space-y-1 transition-all duration-300 relative py-2 ${active ? 'text-primary scale-110' : 'text-slate-400'}`}
+    className="flex-1 flex flex-col items-center justify-center relative py-2 group"
   >
-    <div className="relative flex items-center justify-center">
-      {active && <Icon className="w-6 h-6 fill-current opacity-20 absolute animate-pulse translate-y-[-1px]" />}
-      <Icon className={`w-6 h-6 relative z-10 ${active ? 'stroke-[2.5px]' : 'stroke-2'}`} />
+    <div className={`p-2.5 rounded-xl transition-all duration-300 mb-1 ${active ? 'bg-primary text-white shadow-md' : 'text-primary/40 group-hover:text-primary/60'}`}>
+      <Icon className={`w-5 h-5 transition-transform duration-300 ${active ? 'scale-110' : 'group-hover:scale-110'}`} />
     </div>
-    <span className="text-[10px] font-bold tracking-tight uppercase">{label}</span>
-    {active && <motion.div layoutId="nav-glow" className="absolute -bottom-1 w-1 h-1 bg-primary rounded-full shadow-[0_0_8px_rgba(var(--primary),0.6)]" />}
+    <span className={`text-[9px] font-bold tracking-tight transition-colors duration-300 ${active ? 'text-primary' : 'text-primary/30 group-hover:text-primary/50'}`}>
+      {label}
+    </span>
+    {active && (
+      <motion.div 
+        layoutId="nav-active-dot"
+        className="absolute -bottom-1 w-1 h-1 bg-accent rounded-full"
+      />
+    )}
   </button>
 );
 
 const SectionHeader = ({ title, action, onAction, onAdd }: { title: string, action?: string, onAction?: () => void, onAdd?: () => void }) => (
-  <div className="flex items-center justify-between px-6 mb-8 pt-6">
+  <div className="flex items-center justify-between px-6 mb-6 pt-6">
     <div className="flex items-center space-x-3">
-      <div className="h-6 w-1 w-1 bg-primary rounded-full" />
-      <h2 className="text-2xl font-black text-slate-900 tracking-tighter italic">{title}</h2>
+      <div className="h-6 w-1 bg-accent rounded-full" />
+      <h2 className="text-xl font-bold text-slate-800 tracking-tight">{title}</h2>
     </div>
     <div className="flex items-center space-x-2">
       {onAdd && (
         <button 
           onClick={onAdd}
-          className="p-3 bg-slate-900 text-white rounded-2xl shadow-lg ring-4 ring-slate-100 hover:bg-primary transition-all active:scale-90"
+          className="p-3 bg-primary text-white rounded-2xl shadow-lg shadow-primary/20 hover:scale-110 transition-all active:scale-95"
         >
           <Plus className="w-4 h-4" />
         </button>
@@ -355,7 +419,7 @@ const SectionHeader = ({ title, action, onAction, onAdd }: { title: string, acti
       {action && onAction && (
         <button 
           onClick={onAction} 
-          className="px-6 py-2.5 bg-white border border-slate-100 rounded-xl text-[10px] font-black uppercase tracking-widest text-primary hover:bg-primary hover:text-white transition-all shadow-sm"
+          className="px-6 py-2.5 bg-card border border-slate-100 rounded-xl text-[10px] font-black uppercase tracking-widest text-primary hover:bg-primary hover:text-white transition-all shadow-sm"
         >
           {action}
         </button>
@@ -364,41 +428,65 @@ const SectionHeader = ({ title, action, onAction, onAdd }: { title: string, acti
   </div>
 );
 
-const Banner = ({ onAction, title, reference }: { onAction?: () => void, title: string, reference: string }) => (
-  <div className="mx-4 mb-10 bg-gradient-to-br from-indigo-600 to-violet-700 rounded-[40px] p-10 text-white relative overflow-hidden shadow-2xl shadow-indigo-200">
-    <div className="relative z-10 flex flex-col space-y-6">
-      <div className="w-16 h-1.5 bg-white/20 rounded-full mb-2" />
-      <h1 className="text-3xl md:text-5xl font-black tracking-tight leading-tight italic">"{title}"</h1>
-      <div className="flex items-center space-x-3">
-        <div className="h-[1px] w-8 bg-white/40" />
-        <p className="text-xs font-black uppercase tracking-[0.4em] opacity-60">{reference}</p>
+const Banner = ({ onAction, title, reference }: { onAction?: () => void, title: string, reference: string }) => {
+  const dailyImage = `https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&q=80&w=1000&sig=${new Date().toISOString().split('T')[0]}`;
+  
+  return (
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="mx-6 mb-8 bg-white rounded-[20px] p-8 text-white relative overflow-hidden shadow-2xl border border-white/20 group cursor-pointer"
+      onClick={onAction}
+    >
+      <img 
+        src={dailyImage} 
+        className="absolute inset-0 w-full h-full object-cover transition-transform duration-[3s] group-hover:scale-110" 
+        alt="Daily Landscape" 
+      />
+      <div className="absolute inset-0 bg-gradient-to-br from-slate-900/60 via-slate-900/40 to-transparent backdrop-blur-[1px]" />
+      
+      <div className="relative z-10 text-center">
+        <div className="flex items-center justify-center space-x-2 mb-4">
+          <div className="w-8 h-[1px] bg-white/40" />
+          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/90 drop-shadow-md">Versículo do Dia</span>
+          <div className="w-8 h-[1px] bg-white/40" />
+        </div>
+        
+        <h1 className="text-xl md:text-2xl font-medium italic tracking-tight leading-relaxed mb-6 text-white drop-shadow-lg">
+          "{title}"
+        </h1>
+        
+        <div className="inline-flex items-center space-x-2 bg-white/10 px-4 py-1.5 rounded-full border border-white/20 backdrop-blur-md">
+          <BookOpen className="w-3.5 h-3.5 text-white" />
+          <span className="text-[10px] font-bold text-white italic leading-none">{reference}</span>
+        </div>
       </div>
-      <div className="pt-6">
-        <button 
-          onClick={onAction}
-          className="bg-white text-indigo-600 px-10 py-5 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all shadow-xl shadow-black/10 active:scale-95"
-        >
-          Explorar Devocional →
-        </button>
-      </div>
-    </div>
-    <div className="absolute -right-16 -bottom-16 w-80 h-80 bg-white/10 rounded-full blur-3xl" />
-    <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl" />
-  </div>
-);
+    </motion.div>
+  );
+};
 
-const AnnouncementCard = ({ id, title, tag, date, isAdmin, onDelete, onEdit, onClick }: { id?: string, title: string, tag: string, date: string, isAdmin?: boolean, onDelete?: (id: string) => void, onEdit?: (id: string) => void, onClick?: () => void }) => (
+const AnnouncementCard = ({ id, title, tag, date, isAdmin, isPinned, onDelete, onEdit, onClick }: { id?: string, title: string, tag: string, date: string, isAdmin?: boolean, isPinned?: boolean, onDelete?: (id: string) => void, onEdit?: (id: string) => void, onClick?: () => void, key?: any }) => (
   <motion.div 
     whileHover={{ y: -4 }}
     onClick={onClick}
-    className="flex flex-col space-y-3 p-8 bg-white rounded-[40px] border border-slate-100/80 hover:border-primary/30 transition-all group cursor-pointer shadow-xl shadow-slate-200/40 relative active:scale-[0.98]"
+    className={`flex flex-col space-y-3 p-8 bg-card rounded-[40px] border transition-all group cursor-pointer shadow-xl shadow-slate-200/20 relative active:scale-[0.98] ${
+      isPinned ? 'border-primary/40 bg-primary/5 ring-1 ring-primary/10' : 'border-slate-100 hover:border-primary/30'
+    }`}
   >
     <div className="flex items-center justify-between">
-      <span className="text-[9px] font-black uppercase tracking-[0.3em] text-primary bg-primary/5 px-3 py-1.5 rounded-full ring-1 ring-primary/10">{tag}</span>
       <div className="flex items-center space-x-2">
-        <div className="flex items-center space-x-1 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-100">
+        <span className="text-[9px] font-black uppercase tracking-[0.3em] text-primary bg-primary/5 px-3 py-1.5 rounded-full ring-1 ring-primary/10">{tag}</span>
+        {isPinned && (
+          <div className="flex items-center space-x-1.5 bg-warning/10 text-warning px-3 py-1.5 rounded-full ring-1 ring-warning/20">
+            <Pin className="w-3 h-3 fill-warning" />
+            <span className="text-[9px] font-black uppercase tracking-widest">Importante</span>
+          </div>
+        )}
+      </div>
+      <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-1 bg-background px-3 py-1.5 rounded-full border border-slate-100">
           <Calendar className="w-3 h-3 text-slate-400" />
-          <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">{date}</span>
+          <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{date}</span>
         </div>
         {isAdmin && id && (
           <div className="flex items-center space-x-1 ml-2">
@@ -422,8 +510,8 @@ const AnnouncementCard = ({ id, title, tag, date, isAdmin, onDelete, onEdit, onC
         )}
       </div>
     </div>
-    <h3 className="text-xl font-bold leading-tight group-hover:text-primary transition-colors text-slate-900 tracking-tight italic">{title}</h3>
-    <div className="flex items-center space-x-2 pt-3 border-t border-slate-50">
+    <h3 className="text-xl font-bold leading-tight group-hover:text-primary transition-colors text-slate-800 tracking-tight italic">{title}</h3>
+    <div className="flex items-center space-x-2 pt-3 border-t border-slate-100">
       <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center">
         <ChevronRight className="w-4 h-4 text-primary group-hover:translate-x-0.5 transition-transform" />
       </div>
@@ -460,6 +548,112 @@ const EditModal = ({ title, children, isOpen, onClose }: { title: string, childr
   </AnimatePresence>
 );
 
+const CommentSection = ({ contentId, user, isAdmin, userRole }: { contentId: string, user: FirebaseUser | null, isAdmin: boolean, userRole: string }) => {
+  const [commentText, setCommentText] = useState('');
+  const commentsRef = collection(db, 'comments');
+  const [commentsSnap] = useCollection(
+    user ? query(commentsRef, where('contentId', '==', contentId), orderBy('createdAt', 'desc')) : null
+  );
+
+  const comments = commentsSnap?.docs.map(d => ({ id: d.id, ...d.data() } as Comment)) || [];
+
+  const handleAddComment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) {
+      alert("Faça login para comentar");
+      return;
+    }
+    if (!commentText.trim()) return;
+
+    try {
+      await addDoc(commentsRef, {
+        contentId,
+        userId: user.uid,
+        userName: user.displayName || 'Anônimo',
+        userAvatar: user.photoURL || `https://picsum.photos/seed/${user.uid}/100`,
+        text: commentText,
+        createdAt: Timestamp.now()
+      });
+      setCommentText('');
+    } catch (err) {
+      console.error("Erro ao adicionar comentário:", err);
+    }
+  };
+
+  const handleDeleteComment = async (id: string) => {
+    if (!isAdmin && userRole !== 'lider') return;
+    if (window.confirm("Deseja excluir este comentário?")) {
+      try {
+        await deleteDoc(doc(db, 'comments', id));
+      } catch (err) {
+        console.error("Erro ao excluir comentário:", err);
+      }
+    }
+  };
+
+  return (
+    <div className="mt-8 space-y-6">
+      <h4 className="text-sm font-black uppercase tracking-widest text-slate-900 border-l-4 border-primary pl-3">Comentários</h4>
+      
+      {user ? (
+        <form onSubmit={handleAddComment} className="flex flex-col space-y-3">
+          <textarea
+            value={commentText}
+            onChange={(e) => setCommentText(e.target.value)}
+            placeholder="Digite seu comentário..."
+            className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-medium outline-none focus:ring-2 focus:ring-primary/10 resize-none h-24"
+          />
+          <button 
+            type="submit"
+            className="self-end px-8 py-3 bg-primary text-white text-[10px] font-black uppercase tracking-widest rounded-xl shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all"
+          >
+            Enviar
+          </button>
+        </form>
+      ) : (
+        <div className="p-6 bg-slate-50 rounded-3xl border border-dashed border-slate-200 text-center">
+          <p className="text-xs font-bold text-slate-400">Faça login para comentar</p>
+        </div>
+      )}
+
+      <div className="space-y-4">
+        {comments.map(c => (
+          <div key={c.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex space-x-3">
+            <img src={c.userAvatar} alt={c.userName} className="w-10 h-10 rounded-full object-cover border border-slate-100" />
+            <div className="flex-1">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-black text-slate-900">{c.userName}</p>
+                <div className="flex items-center space-x-2">
+                  <p className="text-[9px] font-bold text-slate-400 uppercase">
+                    {c.createdAt instanceof Timestamp ? c.createdAt.toDate().toLocaleDateString('pt-BR') : 'Agora'}
+                  </p>
+                  {(isAdmin || userRole === 'lider') && (
+                    <button onClick={() => handleDeleteComment(c.id)} className="text-slate-300 hover:text-red-500 transition-colors">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+              <p className="text-xs text-slate-600 mt-1 leading-relaxed">{c.text}</p>
+            </div>
+          </div>
+        ))}
+        {comments.length === 0 && (
+          <p className="text-center py-4 text-[10px] font-bold text-slate-300 uppercase tracking-widest italic">Sem comentários até agora</p>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// --- Helpers ---
+const extractYouTubeId = (url: string) => {
+  if (!url) return null;
+  const regExp = /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*/;
+  const match = url.match(regExp);
+  return (match && match[7].length === 11) ? match[7] : null;
+};
+
 // --- Main App ---
 
 const LoginView = () => {
@@ -473,32 +667,104 @@ const LoginView = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-indigo-100 via-white to-white">
+    <div className="min-h-screen bg-background flex items-center justify-center p-6 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-primary/5 via-background to-background">
       <motion.div 
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
         className="w-full max-w-sm"
       >
-        <div className="bg-white rounded-[48px] p-12 shadow-2xl shadow-indigo-200/50 border border-slate-100 text-center relative overflow-hidden">
+        <div className="bg-card rounded-[48px] p-12 shadow-2xl shadow-primary/5 border border-slate-100 text-center relative overflow-hidden">
           <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl" />
           
           <Logo size="md" className="mx-auto mb-10" glow />
           
-          <h1 className="text-3xl font-black text-slate-900 mb-2 tracking-tight">Igreja Conectada</h1>
-          <p className="text-sm font-medium text-slate-400 mb-10 leading-relaxed">Sua jornada de fé e gestão <br/> ministerial em um só lugar.</p>
+          <h1 className="text-3xl font-black text-slate-800 mb-2 tracking-tight italic">Nova Aliança</h1>
+          <p className="text-sm font-medium text-slate-400 mb-10 leading-relaxed">Conectando vidas e ministérios <br/> em um só lugar.</p>
           
           <button 
             onClick={handleLogin}
-            className="w-full bg-slate-900 text-white py-4.5 rounded-2xl flex items-center justify-center space-x-3 shadow-xl transition-all hover:scale-105 active:scale-95 group"
+            className="w-full bg-primary text-white py-4.5 rounded-2xl flex items-center justify-center space-x-3 shadow-xl shadow-primary/30 transition-all hover:scale-105 active:scale-95 group"
           >
-            <LogIn className="w-5 h-5 text-indigo-400 group-hover:rotate-12 transition-transform" />
+            <LogIn className="w-5 h-5 text-white/50 group-hover:rotate-12 transition-transform" />
             <span className="text-[10px] font-black uppercase tracking-widest">Entrar com Google</span>
           </button>
           
-          <p className="mt-8 text-[9px] text-slate-300 font-bold uppercase tracking-[0.2em]">Eco-Sistema Ministerial v1.1.0</p>
+          <p className="mt-8 text-[9px] text-slate-300 font-bold uppercase tracking-[0.2em]">Eco-Sistema Ministerial v2.0</p>
         </div>
       </motion.div>
     </div>
+  );
+};
+
+const MINISTRIES = ['Louvor', 'Mídia', 'Recepção', 'Crianças', 'Apoio', 'Corpo Diaconal', 'Pastoral', 'Segurança', 'Missões'];
+
+const PersonalDataForm = ({ initialData, onSave, onBack }: { initialData: any, onSave: (data: any) => void, onBack: () => void }) => {
+  const [formData, setFormData] = useState({
+    name: initialData?.name || '',
+    phone: initialData?.phone || '',
+    email: initialData?.email || '',
+    privacyMode: initialData?.privacyMode || 'leadership'
+  });
+
+  return (
+    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="pb-24 max-w-2xl mx-auto px-4 pt-12">
+       <div className="flex items-center space-x-4 mb-8">
+        <button onClick={onBack} className="p-2 bg-white border border-slate-100 rounded-xl">
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+        <h1 className="text-3xl font-black text-slate-900 tracking-tight italic">Dados Cadastrais</h1>
+      </div>
+      <form onSubmit={(e) => { e.preventDefault(); onSave(formData); }} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-xl space-y-6">
+         <div>
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Nome Completo</label>
+            <input 
+              type="text" 
+              className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 text-sm font-bold outline-none focus:ring-2 focus:ring-primary/10"
+              value={formData.name}
+              onChange={e => setFormData({...formData, name: e.target.value})}
+            />
+         </div>
+         <div className="grid grid-cols-2 gap-4">
+           <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Telefone</label>
+              <input 
+                type="text" 
+                className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 text-sm font-bold outline-none focus:ring-2 focus:ring-primary/10"
+                value={formData.phone}
+                onChange={e => setFormData({...formData, phone: e.target.value})}
+              />
+           </div>
+           <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">E-mail</label>
+              <input 
+                type="email" 
+                className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 text-sm font-bold outline-none focus:ring-2 focus:ring-primary/10"
+                value={formData.email}
+                onChange={e => setFormData({...formData, email: e.target.value})}
+              />
+           </div>
+         </div>
+
+         <div className="py-4 border-t border-slate-50">
+            <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 ml-1">Privacidade das Doações</h4>
+            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+               <div>
+                  <p className="text-sm font-bold text-slate-900">Modo Anônimo</p>
+                  <p className="text-[10px] text-slate-400 font-medium">Liderança não verá seu nome nas ofertas</p>
+               </div>
+               <button 
+                 type="button"
+                 onClick={() => setFormData({...formData, privacyMode: formData.privacyMode === 'anonymous' ? 'leadership' : 'anonymous'})}
+                 className={`w-12 h-6 rounded-full relative transition-colors ${formData.privacyMode === 'anonymous' ? 'bg-primary' : 'bg-slate-300'}`}
+               >
+                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${formData.privacyMode === 'anonymous' ? 'left-7' : 'left-1'}`} />
+               </button>
+            </div>
+         </div>
+
+         <button type="submit" className="w-full py-4.5 bg-primary text-white text-[10px] font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-primary/20">Salvar Alterações</button>
+      </form>
+    </motion.div>
   );
 };
 
@@ -506,32 +772,103 @@ export default function App() {
   const [user, loading, error] = useAuthState(auth);
   const [splash, setSplash] = useState(true);
   const [activeView, setActiveView] = useState<View>('home');
+  const [aiQuestion, setAiQuestion] = useState('');
+  const [aiResponse, setAiResponse] = useState('');
+  const [isAnalyzingFakeNews, setIsAnalyzingFakeNews] = useState(false);
+  const [fakeNewsAnalysis, setFakeNewsAnalysis] = useState<{
+    verdict: 'true' | 'false' | 'misleading' | 'unknown';
+    explanation: string;
+    biblicalPerspective: string;
+    confidence: number;
+  } | null>(null);
+  const [fakeNewsInput, setFakeNewsInput] = useState('');
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [aiError, setAiError] = useState('');
   const [confirmedScales, setConfirmedScales] = useState<string[]>([]);
   const [memberSearch, setMemberSearch] = useState('');
   const [memberFilter, setMemberFilter] = useState<'Todos' | 'Ativo' | 'Visitante' | 'Líder'>('Todos');
   const [ministryFilter, setMinistryFilter] = useState('Todos');
   const [showMemberForm, setShowMemberForm] = useState(false);
-  const [newMember, setNewMember] = useState({ name: '', role: '', ministry: '', status: 'Ativo' as any });
+  const [newMember, setNewMember] = useState({ name: '', role: '', ministry: '', status: 'Ativo' as any, email: '', phone: '' });
   const [showTransactionForm, setShowTransactionForm] = useState(false);
   const [transactionType, setTransactionType] = useState<'Dízimo' | 'Oferta' | 'Missões'>('Dízimo');
   const [transactionAmount, setTransactionAmount] = useState('');
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const [userRole, setUserRole] = useState<'admin' | 'lider' | 'membro'>('membro');
+  const [userDepartmentId, setUserDepartmentId] = useState<string | null>(null);
+  const [newsItems, setNewsItems] = useState<NewsItem[]>([]);
+  const [newsSources, setNewsSources] = useState<NewsSource[]>([]);
+  const [isFetchingNews, setIsFetchingNews] = useState(false);
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [selectedBulletin, setSelectedBulletin] = useState<DigitalBulletin | null>(null);
   const [chatMessage, setChatMessage] = useState('');
   const [showDevotionalForm, setShowDevotionalForm] = useState(false);
-  const [newDevotional, setNewDevotional] = useState({ title: '', videoUrl: '', description: '' });
+  const [newDevotional, setNewDevotional] = useState({ title: '', videoUrl: '', description: '', category: 'devocionais' });
   const [userPrayedFor, setUserPrayedFor] = useState<string[]>([]);
+  const [userInterests, setUserInterests] = useState<string[]>([]);
+  const [recommendedCourseIds, setRecommendedCourseIds] = useState<string[]>([]);
+  const [isRecommending, setIsRecommending] = useState(false);
+  const [showInterestSelector, setShowInterestSelector] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   const [currentScaleIndex, setCurrentScaleIndex] = useState(0);
   const [activeHomeTab, setActiveHomeTab] = useState<'contributions' | 'benevolence'>('contributions');
+  const [homeActiveSection, setHomeActiveSection] = useState<string>('main');
+  const [showNewsTicker, setShowNewsTicker] = useState(false);
+  const [bgIntensity, setBgIntensity] = useState<number>(() => {
+    const saved = localStorage.getItem('bgIntensity');
+    return saved ? parseInt(saved) : 50;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('bgIntensity', bgIntensity.toString());
+  }, [bgIntensity]);
+
+  const getDynamicStyles = () => {
+    // Base colors inspired by user: #BFCFCB (164, 15, 78) and #7A84B8 (230, 29, 60)
+    // Intensity 0-100 adjusts brightness and saturation
+    const topL = 98 - (bgIntensity * 0.3); // 0 -> 98, 100 -> 68
+    const topS = 5 + (bgIntensity * 0.2); // 0 -> 5, 100 -> 25
+    const bottomL = 88 - (bgIntensity * 0.4); // 0 -> 88, 100 -> 48
+    const bottomS = 10 + (bgIntensity * 0.4); // 0 -> 10, 100 -> 50
+
+    return {
+      background: `linear-gradient(to bottom, hsl(164, ${topS}%, ${topL}%), hsl(230, ${bottomS}%, ${bottomL}%))`,
+      transition: 'background 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
+    };
+  };
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setShowNewsTicker(prev => !prev);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const scrollToContent = () => {
+    const contentElement = document.getElementById('home-content-area');
+    if (contentElement) {
+      const topOffset = contentElement.getBoundingClientRect().top + window.pageYOffset - 120;
+      window.scrollTo({ top: Math.max(0, topOffset), behavior: 'smooth' });
+    }
+  };
+
+  const handleTabClick = (id: string) => {
+    setHomeActiveSection(id);
+    setTimeout(scrollToContent, 100);
+  };
+  const [profileSubView, setProfileSubView] = useState<'main' | 'notifications' | 'donations' | 'personal' | 'theme'>('main');
+  const [userNotificationPrefs, setUserNotificationPrefs] = useState<string[]>(['Avisos', 'Eventos', 'Escalas']);
+  const [appTheme, setAppTheme] = useState<'light' | 'dark' | 'sepia'>('light');
 
   const [showPrayerForm, setShowPrayerForm] = useState(false);
-  const [newPrayer, setNewPrayer] = useState({ content: '' });
+  const [newPrayer, setNewPrayer] = useState({ content: '', isAnonymous: false });
+  const [isSubmittingPrayer, setIsSubmittingPrayer] = useState(false);
   const [showAgendaForm, setShowAgendaForm] = useState(false);
   const [newAgendaItem, setNewAgendaItem] = useState({ title: '', time: '', date: '', description: '' });
   const [showAnnouncementForm, setShowAnnouncementForm] = useState(false);
-  const [newAnnouncement, setNewAnnouncement] = useState({ title: '', content: '', tag: 'Aviso' });
-  const [newScale, setNewScale] = useState({ ministry: 'Louvor', role: '', date: '' });
+  const [showScaleForm, setShowScaleForm] = useState(false);
+  const [newAnnouncement, setNewAnnouncement] = useState({ title: '', content: '', tag: 'Aviso', isPinned: false });
+  const [newScale, setNewScale] = useState({ ministry: 'Louvor', role: '', date: '', memberId: '', memberName: '', memberAvatar: '' });
   const [completedSteps, setCompletedSteps] = useState<string[]>(['Novo na Igreja', 'Batismo']);
 
   const [editingMember, setEditingMember] = useState<any | null>(null);
@@ -540,6 +877,8 @@ export default function App() {
   const [editingScale, setEditingScale] = useState<any | null>(null);
   const [selectedMinistry, setSelectedMinistry] = useState<string | null>(null);
   const [viewingAnnouncement, setViewingAnnouncement] = useState<any | null>(null);
+  const [selectedAgendaItem, setSelectedAgendaItem] = useState<any | null>(null);
+  const [activeVideo, setActiveVideo] = useState<any | null>(null);
   const [itemToDelete, setItemToDelete] = useState<{ collection: string, id: string } | null>(null);
   const [editingCampaign, setEditingCampaign] = useState<MissionCampaign | null>(null);
   const [editingDevotional, setEditingDevotional] = useState<any | null>(null);
@@ -554,11 +893,99 @@ export default function App() {
   const [newCourse, setNewCourse] = useState({ title: '', info: '', duration: '', description: '', status: 'Inscrições Abertas' });
   const [editingCourse, setEditingCourse] = useState<any | null>(null);
   const [isAdminUnlocked, setIsAdminUnlocked] = useState(false);
+  const [isScaleUnlocked, setIsScaleUnlocked] = useState(false);
+  const [scalePasswordInput, setScalePasswordInput] = useState('');
+  const [showScaleViewPassword, setShowScaleViewPassword] = useState(false);
   const [isAdminSetupMode, setIsAdminSetupMode] = useState(false);
   const [showAdminPassword, setShowAdminPassword] = useState(false);
   const [adminPasswordInput, setAdminPasswordInput] = useState('');
   const [adminSecretState, setAdminSecretState] = useState("pastor2026");
   const [lastAnnouncementId, setLastAnnouncementId] = useState<string | null>(null);
+
+  const [selectedBibleBook, setSelectedBibleBook] = useState<string | null>(null);
+  const [selectedBibleChapter, setSelectedBibleChapter] = useState<number>(1);
+  const [bibleContent, setBibleContent] = useState<any | null>(null);
+  const [isBibleLoading, setIsBibleLoading] = useState(false);
+  const [bibleSearchQuery, setBibleSearchQuery] = useState("");
+  const [bibleSearchResults, setBibleSearchResults] = useState<any[] | null>(null);
+  const [isSearchingBible, setIsSearchingBible] = useState(false);
+  const handleGoogleLogin = async () => {
+    const provider = new GoogleAuthProvider();
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (err) {
+      console.error("Erro ao fazer login:", err);
+      alert("Erro ao fazer login. Verifique sua conexão.");
+    }
+  };
+
+  const BIBLE_BOOKS = [
+    "Gênesis", "Êxodo", "Levítico", "Números", "Deuteronômio", "Josué", "Juízes", "Rute", "1 Samuel", "2 Samuel", "1 Reis", "2 Reis", "1 Crônicas", "2 Crônicas", "Esdras", "Neemias", "Ester", "Jó", "Salmos", "Provérbios", "Eclesiastes", "Cânticos", "Isaías", "Jeremias", "Lamentações", "Ezequiel", "Daniel", "Oseias", "Joel", "Amós", "Obadias", "Jonas", "Miqueias", "Naum", "Habacuque", "Sofonias", "Ageu", "Zacarias", "Malaquias",
+    "Mateus", "Marcos", "Lucas", "João", "Atos", "Romanos", "1 Coríntios", "2 Coríntios", "Gálatas", "Efésios", "Filipenses", "Colossenses", "1 Tessalonicenses", "2 Tessalonicenses", "1 Timóteo", "2 Timóteo", "Tito", "Filemom", "Hebreus", "Tiago", "1 Pedro", "2 Pedro", "1 João", "2 João", "3 João", "Judas", "Apocalipse"
+  ];
+
+  const BIBLE_BOOKS_MAP: { [key: string]: string } = {
+    "Gênesis": "Genesis", "Êxodo": "Exodus", "Levítico": "Leviticus", "Números": "Numbers", "Deuteronômio": "Deuteronomy", 
+    "Josué": "Joshua", "Juízes": "Judges", "Rute": "Ruth", "1 Samuel": "1 Samuel", "2 Samuel": "2 Samuel", 
+    "1 Reis": "1 Kings", "2 Reis": "2 Kings", "1 Crônicas": "1 Chronicles", "2 Crônicas": "2 Chronicles", 
+    "Esdras": "Ezra", "Neemias": "Nehemiah", "Ester": "Esther", "Jó": "Job", "Salmos": "Psalms", 
+    "Provérbios": "Proverbs", "Eclesiastes": "Ecclesiastes", "Cânticos": "Song of Solomon", "Isaías": "Isaiah", 
+    "Jeremias": "Jeremiah", "Lamentações": "Lamentations", "Ezequiel": "Ezekiel", "Daniel": "Daniel", 
+    "Oseias": "Hosea", "Joel": "Joel", "Amós": "Amos", "Obadias": "Obadiah", "Jonas": "Jonah", 
+    "Miqueias": "Micah", "Naum": "Nahum", "Habacuque": "Habakkuk", "Sofonias": "Zephaniah", 
+    "Ageu": "Haggai", "Zacarias": "Zechariah", "Malaquias": "Malachi",
+    "Mateus": "Matthew", "Marcos": "Mark", "Lucas": "Luke", "João": "John", "Atos": "Acts", 
+    "Romanos": "Romans", "1 Coríntios": "1 Corinthians", "2 Coríntios": "2 Corinthians", "Gálatas": "Galatians", 
+    "Efésios": "Ephesians", "Filipenses": "Philippians", "Colossenses": "Colossians", "1 Tessalonicenses": "1 Thessalonians", 
+    "2 Tessalonicenses": "2 Thessalonians", "1 Timóteo": "1 Timothy", "2 Timóteo": "2 Timothy", 
+    "Tito": "Titus", "Filemom": "Philemon", "Hebreus": "Hebrews", "Tiago": "James", "1 Pedro": "1 Peter", 
+    "2 Pedro": "2 Peter", "1 João": "1 John", "2 João": "2 John", "3 João": "3 John", "Judas": "Jude", "Apocalipse": "Revelation"
+  };
+
+  const fetchBibleChapter = async (book: string, chapter: number) => {
+    setIsBibleLoading(true);
+    setBibleSearchResults(null);
+    try {
+      const englishBook = BIBLE_BOOKS_MAP[book] || book;
+      const response = await fetch(`https://bible-api.com/${englishBook}+${chapter}?translation=almeida`);
+      const data = await response.json();
+      setBibleContent(data);
+    } catch (error) {
+      console.error("Erro ao carregar bíblia:", error);
+    } finally {
+      setIsBibleLoading(false);
+    }
+  };
+
+  const handleBibleSearch = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!bibleSearchQuery || bibleSearchQuery.trim().length < 2) return;
+    
+    setIsSearchingBible(true);
+    setSelectedBibleBook(null);
+    setBibleContent(null);
+    
+    try {
+      const response = await fetch(`https://bible-api.com/${encodeURIComponent(bibleSearchQuery)}?translation=almeida`);
+      const data = await response.json();
+      if (data.verses) {
+        setBibleSearchResults(data.verses);
+      } else {
+        setBibleSearchResults([]);
+      }
+    } catch (error) {
+      console.error("Erro na busca bíblica:", error);
+      setBibleSearchResults([]);
+    } finally {
+      setIsSearchingBible(false);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedBibleBook) {
+      fetchBibleChapter(selectedBibleBook, selectedBibleChapter);
+    }
+  }, [selectedBibleBook, selectedBibleChapter]);
 
   // Boletim Digital State
   const [showBulletinForm, setShowBulletinForm] = useState(false);
@@ -572,6 +999,8 @@ export default function App() {
   });
 
   // Firestore Queries
+  const [adminActiveTab, setAdminActiveTab] = useState<'overview' | 'members' | 'bulletins' | 'agenda' | 'announcements' | 'scales'>('overview');
+
   const membersRef = collection(db, 'members');
   const [membersSnap] = useCollection(
     user ? query(membersRef, orderBy('name', 'asc')) : null
@@ -579,7 +1008,7 @@ export default function App() {
   
   const announcementsRef = collection(db, 'announcements');
   const [announcementsSnap] = useCollection(
-    query(announcementsRef, orderBy('createdAt', 'desc'), limit(10))
+    user ? query(announcementsRef, orderBy('createdAt', 'desc'), limit(30)) : null
   );
 
   const scalesRef = collection(db, 'scales');
@@ -609,11 +1038,13 @@ export default function App() {
 
   const agendaRef = collection(db, 'agenda');
   const [agendaSnap] = useCollection(
-    query(agendaRef, orderBy('date', 'asc'))
+    user ? query(agendaRef, orderBy('date', 'asc')) : null
   );
 
   const logsRef = collection(db, 'activityLogs');
-  const [activityLogs] = useCollectionData(query(logsRef, orderBy('createdAt', 'desc'), limit(10)));
+  const [activityLogs] = useCollectionData(
+    user && isAdmin ? query(logsRef, orderBy('createdAt', 'desc'), limit(10)) : null
+  );
 
   const financialRef = collection(db, 'financial');
   const [financialSnap] = useCollection(
@@ -622,29 +1053,45 @@ export default function App() {
 
   const missionRef = doc(db, 'missions', 'missao-2026');
   const [campaignSnap] = useCollection(
-    collection(db, 'missions')
+    user ? collection(db, 'missions') : null
   );
 
   const coursesRef = collection(db, 'courses');
-  const [coursesSnap] = useCollection(query(coursesRef, orderBy('createdAt', 'desc')));
+  const [coursesSnap] = useCollection(
+    user ? query(coursesRef, orderBy('createdAt', 'desc')) : null
+  );
 
   const enrollmentsRef = collection(db, 'enrollments');
   const [enrollmentsSnap] = useCollection(user ? query(enrollmentsRef, where('userId', '==', user.uid)) : null);
 
   const bulletinsRef = collection(db, 'bulletins');
-  const [bulletinsSnap] = useCollection(query(bulletinsRef, orderBy('createdAt', 'desc'), limit(1)));
+  const [bulletinsSnap] = useCollection(
+    user ? query(bulletinsRef, orderBy('createdAt', 'desc'), limit(1)) : null
+  );
+
+  const newsSourcesRef = collection(db, 'newsFeedSources');
+  const [newsSourcesSnap] = useCollection(user ? query(newsSourcesRef, where('active', '==', true)) : null);
+
+  const newsCacheRef = collection(db, 'newsCache');
+  const [newsCacheSnap] = useCollection(user ? query(newsCacheRef, orderBy('createdAt', 'desc'), limit(50)) : null);
 
   const userProfileRef = user ? doc(db, 'userProfiles', user.uid) : null;
   
   // Derived Data
   const members = membersSnap?.docs.map(d => ({ id: d.id, ...d.data() } as Member)) || [];
   const allScales = scalesSnap?.docs.map(d => ({ id: d.id, ...d.data() } as Scale)) || [];
-  const announcements = announcementsSnap?.docs.map(d => ({ id: d.id, ...d.data() })) || [];
+  const announcements = (announcementsSnap?.docs.map(d => ({ id: d.id, ...d.data() })) || [])
+    .sort((a: any, b: any) => {
+      const aPinned = a.isPinned ? 1 : 0;
+      const bPinned = b.isPinned ? 1 : 0;
+      return bPinned - aPinned; // Pinned first
+    });
   const prayers = prayersSnap?.docs.map(d => ({ id: d.id, ...d.data() })) || [];
   const agendaItems = agendaSnap?.docs.map(d => ({ id: d.id, ...d.data() })) || [];
   const financialData = financialSnap?.docs.map(d => ({ id: d.id, ...d.data() })) || [];
   const campaignData = campaignSnap?.docs.map(d => ({ id: d.id, ...d.data() })) || [];
-  const devotionals = devotionalsSnap?.docs.map(d => ({ id: d.id, ...d.data() })) || [];
+  const devotionals = (devotionalsSnap?.docs.map(d => ({ id: d.id, ...d.data() })) || [])
+    .filter((d: any) => d.category === 'devocionais' || d.category === 'semeando' || !d.category);
   const courses = coursesSnap?.docs.map(d => ({ id: d.id, ...d.data() })) || [];
   const myEnrollments = enrollmentsSnap?.docs.map(d => ({ id: d.id, ...d.data() })) || [];
   const bulletins = bulletinsSnap?.docs.map(d => ({ id: d.id, ...d.data() } as DigitalBulletin)) || [];
@@ -687,26 +1134,26 @@ export default function App() {
     return () => clearInterval(interval);
   }, [allScales.length]);
 
-  // Persist local user data
+  // Real-time Church Config Sync
   useEffect(() => {
-    const fetchConfig = async () => {
-      const configSnap = await getDoc(doc(db, 'config', 'church'));
-      if (configSnap.exists()) {
-        const data = configSnap.data();
+    if (!user) return;
+    const unsub = onSnapshot(doc(db, 'config', 'church'), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
         if (data.pixKey) setPixKey(data.pixKey);
         if (data.verseTitle) setVerseTitle(data.verseTitle);
         if (data.verseRef) setVerseRef(data.verseRef);
         if (data.privacyMode) setPrivacyMode(data.privacyMode);
         if (data.adminSecret) setAdminSecretState(data.adminSecret);
       }
-    };
-    if (user) fetchConfig();
-    
+    });
+
     // Restore admin unlock state from session
     const isUnlocked = localStorage.getItem('admin_unlocked');
     if (isUnlocked === 'true') {
       setIsAdminUnlocked(true);
     }
+    return () => unsub();
   }, [user]);
 
   // Real-time Announcement Sound Listener
@@ -747,22 +1194,55 @@ export default function App() {
     if (user && userProfileRef) {
       const syncProfile = async () => {
         const snap = await getDoc(userProfileRef);
-        if (snap.exists()) {
-          const data = snap.data();
-          if (data.completedSteps) setCompletedSteps(data.completedSteps);
-          if (data.confirmedScales) setConfirmedScales(data.confirmedScales);
+        
+        // Fetch role from members collection
+        const membersRef = collection(db, 'members');
+        const memberQuery = query(membersRef, where('email', '==', user.email));
+        const memberSnap = await getDocs(memberQuery);
+        
+        if (!memberSnap.empty) {
+          const memberData = memberSnap.docs[0].data() as Member;
+          setUserRole(memberData.userType || 'membro');
+          setUserDepartmentId(memberData.departmentId || null);
+          if (memberData.userType === 'admin') setIsAdmin(true);
+        } else if (user.email === 'gilmarcoutobrito@gmail.com') {
+          setUserRole('admin');
+          setIsAdmin(true);
         } else {
-          await setDoc(userProfileRef, { 
-            email: user.email, 
-            displayName: user.displayName,
+          setUserRole('membro');
+        }
+
+        if (snap.exists()) {
+          const profile = snap.data();
+          if (profile.completedSteps) setCompletedSteps(profile.completedSteps);
+          if (profile.confirmedScales) setConfirmedScales(profile.confirmedScales);
+          if (profile.interests) setUserInterests(profile.interests);
+          if (profile.notificationPrefs) setUserNotificationPrefs(profile.notificationPrefs);
+          if (profile.appTheme) setAppTheme(profile.appTheme);
+          if (profile.privacyMode) setPrivacyMode(profile.privacyMode);
+        } else {
+          await setDoc(userProfileRef, {
+            email: user.email,
+            name: user.displayName,
             completedSteps: ['Novo na Igreja', 'Batismo'],
-            confirmedScales: []
+            confirmedScales: [],
+            interests: [],
+            notificationPrefs: ['Avisos', 'Eventos', 'Escalas'],
+            appTheme: 'light',
+            privacyMode: 'leadership',
+            updatedAt: Timestamp.now()
           });
         }
       };
       syncProfile();
     }
   }, [user]);
+
+  useEffect(() => {
+    if (activeView === 'courses' && user && courses.length > 0) {
+      handleGetCourseRecommendations();
+    }
+  }, [activeView, user, courses.length, userInterests.length]);
 
   // Update cloud when steps change
   const toggleStep = async (label: string) => {
@@ -805,23 +1285,83 @@ export default function App() {
         role: newMember.role,
         ministry: newMember.ministry,
         status: newMember.status,
+        email: newMember.email || '',
+        phone: newMember.phone || '',
         avatar: `https://picsum.photos/seed/${newMember.name}/100`,
         createdAt: Timestamp.now(),
       });
       await addActivityLog("Membro Cadastrado", `Novo membro: ${newMember.name}`);
       setShowMemberForm(false);
-      setNewMember({ name: '', role: '', ministry: '', status: 'Ativo' });
+      setNewMember({ name: '', role: '', ministry: '', status: 'Ativo', email: '', phone: '' });
+      alert("Membro cadastrado com sucesso!");
     } catch (err) {
       console.error("Erro ao salvar membro:", err);
     }
   };
 
+  const handleFetchNews = async () => {
+    if (!user || isFetchingNews) return;
+    setIsFetchingNews(true);
+    
+    // Default fallback sources if none in DB
+    const sources = newsSourcesSnap?.docs.map(d => ({ id: d.id, ...d.data() } as NewsSource)) || [
+      { id: '1', name: 'Gospel Prime', url: 'https://www.gospelprime.com.br/feed/', active: true },
+      { id: '2', name: 'Christian Post', url: 'https://portugues.christianpost.com/rss/feed.xml', active: true }
+    ];
+
+    try {
+      for (const source of sources) {
+        const response = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(source.url)}`);
+        const data = await response.json();
+        
+        if (data.status === 'ok') {
+          for (const item of data.items) {
+            // Check if already in cache by link
+            const existsQuery = query(collection(db, 'newsCache'), where('link', '==', item.link));
+            const existsSnap = await getDocs(existsQuery);
+            
+            if (existsSnap.empty) {
+              await addDoc(collection(db, 'newsCache'), {
+                title: item.title,
+                description: item.description?.replace(/<[^>]*>?/gm, '').substring(0, 150) + '...',
+                link: item.link,
+                image: item.enclosure?.link || item.thumbnail || 'https://images.unsplash.com/photo-1490730141103-6cac27aaab94?q=80&w=2670&auto=format&fit=crop',
+                pubDate: item.pubDate,
+                source: source.name,
+                createdAt: Timestamp.now()
+              });
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Erro ao buscar notícias:", err);
+    } finally {
+      setIsFetchingNews(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeView === 'news') {
+      handleFetchNews();
+    }
+  }, [activeView]);
+
   const handleConfirmScale = async (id: string, currentStatus: string) => {
     if (!user) return;
     const scaleRef = doc(db, 'scales', id);
+    const scale = allScales.find(s => s.id === id);
+    const userMember = members.find(m => m.email === user.email);
+
+    if (!isAdmin && scale?.memberId !== userMember?.id) {
+       alert("Somente o voluntário escalado pode confirmar esta presença.");
+       return;
+    }
+
     const newStatus = currentStatus === 'confirmed' ? 'pending' : 'confirmed';
     try {
       await updateDoc(scaleRef, { status: newStatus });
+      await addActivityLog(newStatus === 'confirmed' ? "Presença Confirmada" : "Presença Cancelada", `${scale?.memberName} em ${scale?.ministry}`);
       
       const newConfirmed = newStatus === 'confirmed' 
         ? [...confirmedScales, id] 
@@ -886,16 +1426,28 @@ export default function App() {
     e.preventDefault();
     if (!user) return;
     try {
+      const vId = extractYouTubeId(newDevotional.videoUrl);
+      if (!vId) {
+        alert("Link do YouTube inválido. Por favor, cole um link válido.");
+        return;
+      }
+
       await addDoc(collection(db, 'devotionals'), {
         title: newDevotional.title,
         videoUrl: newDevotional.videoUrl,
+        videoId: vId,
+        category: newDevotional.category || 'devocionais',
+        type: 'youtube',
+        section: 'home_devocionais',
         description: newDevotional.description,
+        thumbnailUrl: `https://img.youtube.com/vi/${vId}/maxresdefault.jpg`,
         authorName: user.displayName,
         authorId: user.uid,
         createdAt: Timestamp.now()
       });
       setShowDevotionalForm(false);
-      setNewDevotional({ title: '', videoUrl: '', description: '' });
+      setNewDevotional({ title: '', videoUrl: '', description: '', category: 'devocionais' });
+      await addActivityLog("Devocional Publicado", `Novo vídeo: ${newDevotional.title}`);
     } catch (err) {
       console.error("Erro ao salvar devocional:", err);
     }
@@ -903,19 +1455,30 @@ export default function App() {
 
   const handleCreatePrayer = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user) {
+      alert("Você precisa estar logado para publicar um pedido de oração.");
+      return;
+    }
+    if (!newPrayer.content.trim()) return;
+    
+    setIsSubmittingPrayer(true);
     try {
       await addDoc(collection(db, 'prayers'), {
         content: newPrayer.content,
-        authorName: user.displayName,
+        authorName: newPrayer.isAnonymous ? 'Anônimo' : (user.displayName || 'Irmão'),
         authorId: user.uid,
         prayerCount: 0,
+        isAnonymous: newPrayer.isAnonymous,
         createdAt: Timestamp.now()
       });
       setShowPrayerForm(false);
-      setNewPrayer({ content: '' });
+      setNewPrayer({ content: '', isAnonymous: false });
+      alert("Pedido de oração publicado com sucesso!");
     } catch (err) {
       console.error("Erro ao publicar oração:", err);
+      alert("Erro ao enviar pedido de oração: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setIsSubmittingPrayer(false);
     }
   };
 
@@ -959,7 +1522,7 @@ export default function App() {
       });
       await addActivityLog("Aviso Publicado", `Novo aviso: ${newAnnouncement.title}`);
       setShowAnnouncementForm(false);
-      setNewAnnouncement({ title: '', content: '', tag: 'Aviso' });
+      setNewAnnouncement({ title: '', content: '', tag: 'Aviso', isPinned: false });
     } catch (err) {
       console.error("Erro ao criar anúncio:", err);
     }
@@ -974,11 +1537,92 @@ export default function App() {
         status: 'pending',
         createdAt: Timestamp.now()
       });
-      await addActivityLog("Escala Criada", `${newScale.ministry}: ${newScale.role}`);
-      setNewScale({ ministry: 'Louvor', role: '', date: '' });
+      await addActivityLog("Escala Criada", `${newScale.ministry}: ${newScale.memberName} (${newScale.role})`);
+      setNewScale({ ministry: 'Louvor', role: '', date: '', memberId: '', memberName: '', memberAvatar: '' });
       alert("Escala criada com sucesso!");
     } catch (err) {
       console.error("Erro ao criar escala:", err);
+    }
+  };
+
+  const handleAutoGenerateScale = async () => {
+    if (!isAdmin) return;
+    const dateStr = prompt("Para qual data deseja gerar as escalas? (Ex: Próximo Domingo)");
+    if (!dateStr) return;
+
+    const autoMinistries = [
+      { name: 'Louvor', roles: ['Vocal', 'Teclado', 'Violão', 'Bateria', 'Baixo'] },
+      { name: 'Mídia', roles: ['Som', 'Projeção', 'Câmera', 'Stream'] },
+      { name: 'Recepção', roles: ['Portaria', 'Boas-vindas', 'Apoio'] }
+    ];
+
+    try {
+      const newScalePromises = [];
+      for (const min of autoMinistries) {
+        const minMembers = members.filter(m => m.ministry === min.name);
+        if (minMembers.length === 0) continue;
+
+        for (const role of min.roles) {
+          const member = minMembers[Math.floor(Math.random() * minMembers.length)];
+          const scaleData = {
+            ministry: min.name,
+            role,
+            date: dateStr,
+            memberId: member.id,
+            memberName: member.name,
+            memberAvatar: member.avatar,
+            status: 'pending' as const,
+            createdAt: Timestamp.now()
+          };
+          newScalePromises.push(addDoc(collection(db, 'scales'), scaleData));
+        }
+      }
+
+      if (newScalePromises.length === 0) {
+        alert("Nenhum membro encontrado nos ministérios selecionados para gerar escalas.");
+        return;
+      }
+
+      await Promise.all(newScalePromises);
+      await addActivityLog("Escala Automática", `Escalas geradas para ${dateStr}`);
+      alert(`${newScalePromises.length} escalas geradas automaticamente para ${dateStr}!`);
+    } catch (err) {
+      console.error("Erro ao auto-gerar escalas:", err);
+      alert("Erro ao gerar escalas.");
+    }
+  };
+
+  const handleRequestReplacement = async (scaleId: string, notes: string) => {
+    if (!user) return;
+    const scaleRef = doc(db, 'scales', scaleId);
+    try {
+       await updateDoc(scaleRef, {
+         status: 'needs_replacement',
+         notes: notes
+       });
+       await addActivityLog("Substituição Solicitada", `Solicitado substituto para uma escala por ${user.displayName}`);
+    } catch (err) {
+       console.error("Erro ao solicitar substituição:", err);
+    }
+  };
+   
+  const handleAssignReplacement = async (scaleId: string, replacement: Member) => {
+    if (!isAdmin) return;
+    const scaleRef = doc(db, 'scales', scaleId);
+    try {
+       await updateDoc(scaleRef, {
+         memberId: replacement.id,
+         memberName: replacement.name,
+         memberAvatar: replacement.avatar,
+         status: 'pending',
+         replacementId: null,
+         replacementName: null,
+         notes: `Substituto atribuído: ${replacement.name}`
+       });
+       await addActivityLog("Substituto Atribuído", `Nova pessoa escalada em substituição: ${replacement.name}`);
+       alert("Substituto atribuído com sucesso!");
+    } catch (err) {
+       console.error("Erro ao atribuir substituto:", err);
     }
   };
 
@@ -990,7 +1634,9 @@ export default function App() {
         name: editingMember.name,
         role: editingMember.role,
         ministry: editingMember.ministry,
-        status: editingMember.status
+        status: editingMember.status,
+        email: editingMember.email || '',
+        phone: editingMember.phone || ''
       });
       await addActivityLog("Membro Atualizado", `Alteração em: ${editingMember.name}`);
       setEditingMember(null);
@@ -1006,7 +1652,8 @@ export default function App() {
       await updateDoc(doc(db, 'announcements', editingAnnouncement.id), {
         title: editingAnnouncement.title,
         tag: editingAnnouncement.tag,
-        content: editingAnnouncement.content
+        content: editingAnnouncement.content,
+        isPinned: editingAnnouncement.isPinned || false
       });
       setEditingAnnouncement(null);
     } catch (err) {
@@ -1037,7 +1684,13 @@ export default function App() {
       await updateDoc(doc(db, 'scales', editingScale.id), {
         ministry: editingScale.ministry,
         role: editingScale.role,
-        date: editingScale.date
+        date: editingScale.date,
+        memberId: editingScale.memberId,
+        memberName: editingScale.memberName,
+        memberAvatar: editingScale.memberAvatar,
+        status: editingScale.status,
+        replacementId: editingScale.replacementId || null,
+        replacementName: editingScale.replacementName || null
       });
       setEditingScale(null);
     } catch (err) {
@@ -1240,6 +1893,37 @@ export default function App() {
     link.click();
   };
 
+  const handleScaleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!scalePasswordInput) {
+      alert("Por favor, digite a senha.");
+      return;
+    }
+    
+    let currentSecret = adminSecretState || "pastor2026";
+    try {
+      const configRef = doc(db, 'config', 'church');
+      const configSnap = await getDoc(configRef);
+      if (configSnap.exists()) {
+        const data = configSnap.data();
+        if (data && data.adminSecret) {
+          currentSecret = data.adminSecret;
+          setAdminSecretState(currentSecret);
+        }
+      }
+    } catch (err) {
+      console.warn("Usando senha em cache:", err);
+    }
+
+    if (scalePasswordInput.trim() === currentSecret.trim()) {
+      setIsScaleUnlocked(true);
+      setScalePasswordInput('');
+      alert("Acesso às Escalas Liberado!");
+    } else {
+      alert("Senha incorreta! Acesso negado.");
+    }
+  };
+
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!adminPasswordInput) {
@@ -1279,7 +1963,12 @@ export default function App() {
     setIsGeneratingBulletin(true);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error("GEMINI_API_KEY is not configured in settings.");
+      }
+      
+      const ai = new GoogleGenAI({ apiKey });
       
       const promptText = `
         Você é um assistente inteligente especializado em conteúdo cristão, teologia básica e organização de cultos.
@@ -1287,15 +1976,21 @@ export default function App() {
         O boletim deve ser organizado, claro, envolvente e espiritualmente edificante.
         Nome do boletim: "Boletim Digital"
 
-        ENTRADAS:
-        - Tema do culto: ${bulletinInputs.tema}
-        - Nome do pregador: ${bulletinInputs.pregador}
-        - Texto bíblico base: ${bulletinInputs.texto_biblico}
-        - Transcrição ou resumo da pregação: ${bulletinInputs.pregacao_texto}
-        - Data do culto: ${bulletinInputs.data}
+        INSTRUÇÕES ADICIONAIS:
+        - O resumo da pregação deve ser fiel ao texto enviado, mas escrito de forma inspiradora.
+        - As lições devem ser pontos práticos removidos da pregação.
+        - Os versículos relacionados devem reforçar a mensagem.
+        - O plano da semana deve ser um devocional sugerido dia a dia.
 
-        SAÍDA ESPERADA (FORMATO ESTRUTURADO):
-        JSON estruturado rigorosamente com os campos: capa(nome, tema, data, versiculo_destaque), resumo_pregacao, licoes(array), versiculos_relacionados(array de objetos com referencia e trecho), aplicacao(array), semana_espiritual(array de objetos com dia, foco, versiculo, acao), frase_final.
+        ENTRADAS:
+        - Tema do culto: "${bulletinInputs.tema}"
+        - Nome do pregador: "${bulletinInputs.pregador}"
+        - Texto bíblico base: "${bulletinInputs.texto_biblico}"
+        - Transcrição ou resumo da pregação: "${bulletinInputs.pregacao_texto}"
+        - Data do culto: "${bulletinInputs.data}"
+
+        SAÍDA ESPERADA:
+        JSON estruturado rigorosamente com os campos descritos no schema.
       `;
 
       const response = await ai.models.generateContent({
@@ -1350,9 +2045,10 @@ export default function App() {
         }
       });
 
-      const result = JSON.parse(response.text || '{}');
+      const text = response.text || '{}';
+      const result = JSON.parse(text);
 
-      await addDoc(collection(db, 'bulletins'), {
+      const docRef = await addDoc(collection(db, 'bulletins'), {
         theme: bulletinInputs.tema,
         preacher: bulletinInputs.pregador,
         date: bulletinInputs.data || new Date().toLocaleDateString('pt-BR'),
@@ -1363,12 +2059,246 @@ export default function App() {
       await addActivityLog("Boletim Gerado", `Novo boletim: ${bulletinInputs.tema}`);
       setShowBulletinForm(false);
       setBulletinInputs({ tema: '', pregador: '', texto_biblico: '', pregacao_texto: '', data: new Date().toLocaleDateString('pt-BR') });
+      setSelectedBulletin({ id: docRef.id, ...bulletinInputs, jsonContent: result, date: bulletinInputs.data || new Date().toLocaleDateString('pt-BR'), theme: bulletinInputs.tema, preacher: bulletinInputs.pregador, createdAt: Timestamp.now() } as DigitalBulletin);
       alert("Boletim Digital gerado com tecnologia IA e publicado com sucesso!");
     } catch (err) {
       console.error("Erro ao gerar boletim:", err);
       alert("Erro ao falar com a IA. Tente novamente em instantes.");
     } finally {
       setIsGeneratingBulletin(false);
+    }
+  };
+
+  const handleGetCourseRecommendations = async () => {
+    if (!user || isRecommending || courses.length === 0) return;
+    setIsRecommending(true);
+    try {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) return;
+
+      const ai = new GoogleGenAI({ apiKey });
+      const prompt = `
+        Com base no perfil do membro da igreja abaixo, recomende os 2 melhores cursos da lista disponível.
+        
+        PERFIL DO MEMBRO:
+        - Interesses registrados: ${userInterests.join(', ') || 'Nenhum registrado'}
+        - Escalas confirmadas (histórico de ministério): ${confirmedScales.length} escalas
+        - Passos de crescimento concluídos: ${completedSteps.join(', ') || 'Nenhum'}
+        
+        LISTA DE CURSOS DISPONÍVEIS (ID e Título):
+        ${(courses as any[]).map(c => `ID: ${c.id}, Título: ${c.title}, Descrição: ${c.info}`).join('\n')}
+        
+        Retorne APENAS um array JSON com os IDs dos cursos recomendados. Exemplo: ["id1", "id2"]
+      `;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json"
+        }
+      });
+
+      const text = response.text || "[]";
+      const ids = JSON.parse(text);
+      if (Array.isArray(ids)) {
+        setRecommendedCourseIds(ids);
+      }
+    } catch (err) {
+      console.error("Erro ao gerar recomendações:", err);
+    } finally {
+      setIsRecommending(false);
+    }
+  };
+
+  const handleUpdateInterests = async (interest: string) => {
+    if (!user || !userProfileRef) return;
+    const newInterests = userInterests.includes(interest)
+      ? userInterests.filter(i => i !== interest)
+      : [...userInterests, interest];
+    
+    setUserInterests(newInterests);
+    try {
+      await updateDoc(userProfileRef, { interests: newInterests });
+    } catch (err) {
+      console.error("Erro ao atualizar interesses:", err);
+    }
+  };
+
+  const handleUpdateNotificationPrefs = async (pref: string) => {
+    if (!user || !userProfileRef) return;
+    const newPrefs = userNotificationPrefs.includes(pref)
+      ? userNotificationPrefs.filter(p => p !== pref)
+      : [...userNotificationPrefs, pref];
+    
+    setUserNotificationPrefs(newPrefs);
+    try {
+      await updateDoc(userProfileRef, { notificationPrefs: newPrefs });
+    } catch (err) {
+      console.error("Erro ao atualizar notificações:", err);
+    }
+  };
+
+  const handleUpdateTheme = async (theme: 'light' | 'dark' | 'sepia') => {
+    if (!user || !userProfileRef) return;
+    setAppTheme(theme);
+    try {
+      await updateDoc(userProfileRef, { appTheme: theme });
+    } catch (err) {
+      console.error("Erro ao atualizar tema:", err);
+    }
+  };
+
+  const handleUpdatePersonalData = async (data: { name: string, phone: string, email: string, privacyMode: 'anonymous' | 'leadership' }) => {
+    if (!user || !userProfileRef) return;
+    setPrivacyMode(data.privacyMode);
+    try {
+      await updateDoc(userProfileRef, { 
+        name: data.name,
+        phone: data.phone,
+        email: data.email,
+        privacyMode: data.privacyMode
+      });
+      // Also update linked member record if any
+      const userMember = members.find(m => m.email === user.email);
+      if (userMember) {
+        await updateDoc(doc(db, 'members', userMember.id), {
+          name: data.name,
+          phone: data.phone,
+          email: data.email
+        });
+      }
+      alert("Dados atualizados com sucesso!");
+    } catch (err) {
+      console.error("Erro ao atualizar dados:", err);
+      alert("Erro ao salvar dados.");
+    }
+  };
+
+  const handleAiAsk = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!aiQuestion.trim()) return;
+
+    setIsAiLoading(true);
+    setAiError('');
+    setAiResponse('');
+
+    try {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error('Configuração de IA ausente no ambiente.');
+      }
+
+      const ai = new GoogleGenAI({ apiKey });
+      
+      const prompt = `Você é um assistente cristão que responde com base na Bíblia, com linguagem simples, acolhedora e respeitosa.
+
+Pergunta do usuário: ${aiQuestion}`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt
+      });
+
+      if (!response.text) {
+        throw new Error('Não recebi uma resposta válida da IA.');
+      }
+
+      setAiResponse(response.text);
+    } catch (err) {
+      console.error(err);
+      setAiError('Erro ao conectar. Tente novamente.');
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  const handleAnalyzeFakeNews = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!fakeNewsInput.trim()) return;
+
+    setIsAnalyzingFakeNews(true);
+    setFakeNewsAnalysis(null);
+
+    try {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error('Configuração de IA ausente.');
+      }
+
+      const ai = new GoogleGenAI({ apiKey });
+      
+      const prompt = `Você é um especialista em detecção de desinformação e fake news, com profunda base em ética cristã e princípios bíblicos.
+Sua missão é analisar a notícia ou afirmação abaixo e fornecer um veredito claro.
+
+ENTRADA: "${fakeNewsInput}"
+
+DIRETRIZES DE ANÁLISE:
+1. Veracidade Factual: Cruze com conhecimentos gerais e fatos conhecidos.
+2. Perspectiva Bíblica: Como a Bíblia trata esse assunto ou o ato de espalhar tal informação? Cite princípios como "não dirás falso testemunho".
+3. Tom e Sensacionalismo: Analise se a linguagem é feita para causar pânico ou ódio.
+
+SAÍDA ESPERADA:
+Retorne RIGOROSAMENTE um JSON com este schema:
+{
+  "verdict": "true" | "false" | "misleading" | "unknown",
+  "explanation": "Explicação detalhada sobre a veracidade",
+  "biblicalPerspective": "Breve comentário baseado na sabedoria bíblica sobre o tema",
+  "confidence": 0-100 (nível de certeza)
+}`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-1.5-flash",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json"
+        }
+      });
+
+      const text = response.text;
+      if (!text) {
+        throw new Error('Resposta inválida da IA.');
+      }
+
+      const analysisResult = JSON.parse(text);
+      setFakeNewsAnalysis(analysisResult);
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao analisar notícia. Tente novamente.');
+    } finally {
+      setIsAnalyzingFakeNews(false);
+    }
+  };
+
+  const handleResetApp = async () => {
+    if (!isAdmin || !isAdminUnlocked) return;
+    if (!confirm("AVISO CRÍTICO: Isso apagará todos os dados de membros, avisos, escalas, financeiro e mensagens. Deseja continuar?")) return;
+    
+    setIsResetting(true);
+    try {
+      const collectionsToClear = [
+        'members', 'announcements', 'scales', 'financial', 
+        'chatRooms', 'devotionals', 'prayers', 'agenda', 
+        'courses', 'enrollments', 'bulletins', 'activityLogs'
+      ];
+
+      for (const collName of collectionsToClear) {
+        try {
+          const snap = await getDocs(collection(db, collName));
+          const deletePromises = snap.docs.map(d => deleteDoc(doc(db, collName, d.id)));
+          await Promise.all(deletePromises);
+        } catch (e) {
+          console.warn(`Could not clear collection ${collName}`, e);
+        }
+      }
+      
+      alert("Sistema resetado com sucesso para a nova fase!");
+      window.location.reload();
+    } catch (err) {
+      console.error("Erro ao resetar aplicativo:", err);
+      alert("Houve um erro ao resetar alguns dados.");
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -1493,22 +2423,22 @@ export default function App() {
 
   if (loading || splash) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[#0a0c10] overflow-hidden relative">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,_var(--tw-gradient-stops))] from-indigo-900/20 via-transparent to-transparent" />
+      <div className="min-h-screen flex flex-col items-center justify-center bg-background overflow-hidden relative">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,_var(--tw-gradient-stops))] from-primary/10 via-transparent to-transparent" />
         <Logo size="lg" glow />
         <motion.div 
-           initial={{ opacity: 0, y: 10 }}
-           animate={{ opacity: 1, y: 0 }}
-           transition={{ delay: 0.5 }}
+           initial={{ opacity: 0, scale: 0.8 }}
+           animate={{ opacity: 1, scale: 1 }}
+           transition={{ delay: 0.3 }}
            className="mt-12 text-center"
         >
-          <h2 className="text-xl font-black text-white/90 tracking-[0.3em] uppercase italic">Igreja Conectada</h2>
-          <div className="mt-4 w-48 h-1 bg-white/10 rounded-full mx-auto relative overflow-hidden">
+          <h2 className="text-xl font-black text-slate-800 tracking-[0.3em] uppercase italic">Igreja Conectada</h2>
+          <div className="mt-4 w-48 h-1.5 bg-slate-100 rounded-full mx-auto relative overflow-hidden">
              <motion.div 
                initial={{ x: '-100%' }}
                animate={{ x: '100%' }}
-               transition={{ duration: 0.5, ease: "easeInOut", repeat: Infinity }}
-               className="absolute inset-0 bg-primary shadow-[0_0_10px_rgba(79,70,229,0.8)]"
+               transition={{ duration: 1.5, ease: "easeInOut", repeat: Infinity }}
+               className="absolute inset-0 bg-primary shadow-[0_0_15px_rgba(59,130,246,0.5)]"
              />
           </div>
         </motion.div>
@@ -1525,311 +2455,701 @@ export default function App() {
       case 'home':
         return (
           <motion.div 
-            initial={{ opacity: 0, y: 20 }} 
-            animate={{ opacity: 1, y: 0 }}
-            className="pb-24 max-w-2xl mx-auto"
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }}
+            className="pb-24 max-w-md mx-auto bg-white min-h-screen"
           >
-            <div className="px-6 pt-10 pb-6">
-              <div className="flex items-center space-x-4 mb-8 bg-gradient-to-r from-slate-900 to-slate-800 p-3 pr-6 rounded-[24px] w-fit border border-slate-700/50 shadow-xl shadow-slate-200/50 group">
-                <div className="w-12 h-12 bg-primary rounded-[18px] flex items-center justify-center shadow-lg shadow-primary/30 group-hover:scale-110 transition-transform duration-500">
-                  <Church className="w-7 h-7 text-white" />
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-sm font-black uppercase tracking-[0.4em] text-white italic drop-shadow-sm">Igreja Conectada</span>
-                  <div className="w-full h-0.5 bg-primary/30 mt-1 rounded-full overflow-hidden">
-                    <motion.div 
-                      initial={{ width: 0 }}
-                      animate={{ width: '100%' }}
-                      transition={{ duration: 1.5, delay: 0.5 }}
-                      className="h-full bg-primary"
-                    />
-                  </div>
-                </div>
+            {/* New Mockup Header */}
+            <header className="p-6 flex justify-between items-center">
+              <div>
+                <h1 className="text-blue-900 font-bold text-xl flex items-center gap-2">
+                  <span className="bg-blue-600 w-6 h-6 flex items-center justify-center rounded text-white text-xs">†</span> 
+                  COMUNIDADE VIVA
+                </h1>
+                <p className="text-slate-400 text-[10px] mt-4 font-black uppercase tracking-[0.2em]">Página Inicial</p>
               </div>
-              
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Bom dia, {user?.displayName?.split(' ')[0] || 'Irmão'}</p>
-                  <h1 className="text-4xl font-black text-slate-900 tracking-tighter leading-none mt-1">Graça e Paz</h1>
+              <div className="flex items-center gap-4">
+                <div className="text-right hidden sm:block">
+                  <span className="text-xs text-slate-500 block">Olá,</span>
+                  <span className="text-sm font-bold text-slate-800">{user?.displayName?.split(' ')[0] || 'Visitante'}</span>
                 </div>
-                <div className="flex items-center space-x-3">
-                  <button 
-                    onClick={handleSignOut}
-                    className="p-3 bg-white border border-slate-100 rounded-2xl shadow-card text-slate-400 hover:text-red-500 transition-colors"
-                  >
-                    <LogOut className="w-5 h-5" />
-                  </button>
-                  <div className="relative">
-                    <div className="absolute top-0 right-0 w-3 h-3 bg-indigo-500 rounded-full border-2 border-white z-10 animate-bounce" />
-                    <button 
-                      onClick={() => {
-                        playNotificationSound();
-                        alert('Você tem novas atualizações da comunidade!');
-                      }}
-                      className="p-3 bg-white border border-slate-100 rounded-2xl shadow-card text-slate-600 hover:bg-slate-50 transition-all active:scale-95"
-                    >
-                      <Bell className="w-6 h-6" />
-                    </button>
-                  </div>
-                </div>
+                <button 
+                  onClick={() => setActiveView('profile')}
+                  className="w-11 h-11 bg-slate-50 border border-slate-100 rounded-2xl flex items-center justify-center overflow-hidden shadow-sm shadow-slate-200/50"
+                >
+                  <img src={user?.photoURL || `https://ui-avatars.com/api/?name=${user?.displayName || 'U'}&background=6F7DAA&color=fff`} className="w-full h-full object-cover" alt="Profile" />
+                </button>
               </div>
-            </div>
+            </header>
 
-            <Banner 
-              title={verseTitle} 
-              reference={verseRef} 
-              onAction={() => setActiveView('devotionals')} 
-            />
-
-            <div className="px-4 mb-12">
-              <div className="bg-white border border-slate-100 rounded-[48px] p-10 shadow-xl shadow-slate-200/50 overflow-hidden relative group">
-                <div className="absolute top-0 right-0 w-48 h-48 bg-primary/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl" />
+            {/* Hero Section - Next Service */}
+            <section className="px-5 mb-10">
+              <div className="bg-slate-900 rounded-[32px] p-8 text-white relative overflow-hidden shadow-2xl shadow-slate-900/20">
+                <div className="absolute right-[-30px] top-[-30px] w-48 h-48 bg-blue-500 opacity-20 rounded-full blur-3xl"></div>
+                <div className="absolute left-[-20px] bottom-[-20px] w-32 h-32 bg-emerald-500 opacity-10 rounded-full blur-2xl"></div>
+                
                 <div className="relative z-10">
-                  <div className="flex items-center justify-between mb-10">
-                    <div className="flex items-center space-x-5">
-                      <div className="w-16 h-16 bg-primary-light rounded-[28px] flex items-center justify-center shadow-sm">
-                        <Zap className="w-8 h-8 text-primary animate-pulse" />
-                      </div>
-                      <div>
-                        <h3 className="text-3xl font-black text-slate-900 tracking-tighter italic">Dízimos & Missões</h3>
-                        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 mt-1">Contribuição Instantânea</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-10 bg-slate-50/50 p-10 rounded-[40px] border border-slate-100/50 backdrop-blur-sm">
-                    <div className="space-y-6">
-                      <div>
-                         <div className="flex items-center justify-between mb-4">
-                           <span className="text-[10px] font-black uppercase tracking-[0.4em] text-primary">Chave Pix Oficial</span>
-                           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.5)]" />
-                         </div>
-                         <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between group/key">
-                           <p className="text-base font-mono text-slate-800 select-all font-bold tracking-tight break-all">
-                             {pixKey}
-                           </p>
-                           <button onClick={handleCopyPix} className="p-3 bg-slate-50 rounded-xl hover:bg-primary hover:text-white transition-all ml-4 shrink-0">
-                             <Copy className="w-5 h-5" />
-                           </button>
-                         </div>
-                      </div>
-                      <button 
-                        onClick={handleCopyPix}
-                        className="w-full bg-slate-900 text-white py-6 rounded-3xl text-[11px] font-black uppercase tracking-[0.2em] shadow-2xl shadow-slate-900/20 active:scale-95 transition-all hover:bg-primary flex items-center justify-center space-x-3"
-                      >
-                        <Wallet className="w-5 h-5" />
-                        <span>Copiar Chave Pix</span>
-                      </button>
-                    </div>
-                    <div className="bg-white p-6 rounded-[32px] border-2 border-dashed border-slate-100 flex flex-col items-center justify-center text-center shadow-lg shadow-slate-100/50 group/qr relative group transition-all hover:border-primary/20">
-                       <div className="w-32 h-32 bg-slate-50 rounded-3xl mb-4 flex items-center justify-center relative overflow-hidden ring-8 ring-slate-50/50">
-                          <QrCode className="w-16 h-16 text-slate-900 opacity-80" />
-                          <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                            <span className="text-[10px] font-black text-primary uppercase tracking-widest mt-10 italic">Escanear</span>
-                          </div>
-                       </div>
-                       <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 leading-relaxed px-4">Aponte sua câmera para o <br/> QR Code e doe agora</p>
-                       <div className="absolute -top-3 -right-3 w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center shadow-sm">
-                          <Plus className="w-5 h-5 text-indigo-600 rotate-45" />
-                       </div>
-                    </div>
-                  </div>
+                  <span className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60 mb-2 block">Próximo Culto:</span>
+                  <h2 className="text-3xl font-black italic tracking-tighter mb-6 leading-none">Celebração de <br /> Domingo</h2>
                   
-                  <div className="mt-10 flex items-center justify-center">
-                    <button 
-                      onClick={() => setActiveView('financial')}
-                      className="group flex items-center space-x-3 text-primary text-[11px] font-black uppercase tracking-[0.3em] hover:opacity-80 transition-all"
-                    >
-                      <span>Relatório de Transparência</span>
-                      <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {bulletins.length > 0 && (
-              <div className="px-4 mb-12">
-                <div onClick={() => setSelectedBulletin(bulletins[0])} className="bg-slate-900 border border-slate-800 rounded-[48px] p-8 shadow-2xl shadow-indigo-100 cursor-pointer overflow-hidden relative group">
-                   <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-all">
-                      <FileText className="w-24 h-24 text-white" />
-                   </div>
-                   <div className="relative z-10">
-                      <div className="flex items-center space-x-4 mb-6">
-                        <div className="w-12 h-12 bg-primary rounded-2xl flex items-center justify-center shadow-lg shadow-primary/20">
-                          <Zap className="w-6 h-6 text-white" />
-                        </div>
-                        <div>
-                          <p className="text-[10px] font-black uppercase text-primary tracking-widest leading-none">Boletim Digital de Culto</p>
-                          <h3 className="text-xl font-black text-white italic tracking-tight">{bulletins[0].theme}</h3>
-                        </div>
+                  <div className="space-y-3 mb-8">
+                    <div className="flex items-center space-x-3 text-sm font-medium opacity-90">
+                      <div className="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center">
+                         <Calendar className="w-4 h-4 text-blue-400" />
                       </div>
-                      <div className="flex items-center justify-between">
-                         <div className="flex items-center space-x-6">
-                            <div className="flex flex-col">
-                               <span className="text-[8px] font-black uppercase text-white/40 tracking-widest">Pregador</span>
-                               <span className="text-xs font-bold text-white">{bulletins[0].preacher}</span>
-                            </div>
-                            <div className="flex flex-col">
-                               <span className="text-[8px] font-black uppercase text-white/40 tracking-widest">Data</span>
-                               <span className="text-xs font-bold text-white">{bulletins[0].date}</span>
-                            </div>
-                         </div>
-                         <button className="px-6 py-3 bg-white/10 hover:bg-white/20 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all">
-                           Abrir Boletim
-                         </button>
-                      </div>
-                   </div>
-                </div>
-              </div>
-            )}
-
-            <SectionHeader 
-              title="Avisos Importantes" 
-              action="Ver Todos" 
-              onAction={() => setActiveView('more')}
-              onAdd={isAdmin ? () => { setShowAnnouncementForm(true); setActiveView('more'); } : undefined}
-            />
-            <div className="px-4 space-y-4">
-              {announcements && announcements.length > 0 ? (
-                announcements.slice(0, 3).map((a: any) => (
-                  <div key={a.id}>
-                    <AnnouncementCard 
-                      id={a.id}
-                      title={a.title} 
-                      tag={a.tag} 
-                      date={a.date} 
-                      isAdmin={isAdmin}
-                      onDelete={(id) => handleDeleteItem('announcements', id)}
-                      onEdit={(id) => setEditingAnnouncement(a)}
-                      onClick={() => setViewingAnnouncement(a)}
-                    />
-                  </div>
-                ))
-              ) : (
-                <>
-                  <AnnouncementCard 
-                    title="Conferência de Jovens: Despertar 2026" 
-                    tag="Eventos" 
-                    date="25 Abr" 
-                    onClick={() => setViewingAnnouncement({
-                      title: "Conferência de Jovens: Despertar 2026",
-                      tag: "Eventos",
-                      date: "25 Abr",
-                      content: "Uma conferência dedicada ao despertamento espiritual da nossa juventude. Teremos convidados especiais e muita adoração. Não perca!"
-                    })}
-                  />
-                  <AnnouncementCard 
-                    title="Novo horário do culto de oração (Quarta-feira)" 
-                    tag="Mudança" 
-                    date="Ontem" 
-                    onClick={() => setViewingAnnouncement({
-                      title: "Novo horário do culto de oração (Quarta-feira)",
-                      tag: "Mudança",
-                      date: "Ontem",
-                      content: "A partir desta semana, nosso culto de oração das quartas-feiras começará às 19:30 em vez das 20:00. Esperamos todos vocês para este momento de clamor."
-                    })}
-                  />
-                </>
-              )}
-            </div>
-
-            <SectionHeader 
-              title="Minha Agenda" 
-              action="Ver Detalhes"
-              onAction={() => setActiveView('ministries')}
-            />
-            <div className="px-4">
-              <div className="bg-slate-900 rounded-[32px] p-6 text-white shadow-2xl relative overflow-hidden group">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-primary/20 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl group-hover:scale-110 transition-transform" />
-                <div className="relative z-10">
-                  {allScales.length > 0 ? (
-                    <div className="relative">
-                      <AnimatePresence mode="wait">
-                        {allScales.map((s, idx) => {
-                          if (idx !== (currentScaleIndex % (allScales.length || 1))) return null;
-                          const isConfirmed = confirmedScales.includes(s.id);
-                          return (
-                            <motion.div 
-                              key={s.id}
-                              initial={{ opacity: 0, scale: 0.95 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              exit={{ opacity: 0, scale: 1.05 }}
-                              transition={{ duration: 0.5, ease: "anticipate" }}
-                            >
-                              <div className="flex items-center justify-between mb-6">
-                                <div className="flex items-center space-x-4">
-                                  <div className={`w-12 h-12 ${isConfirmed ? 'bg-primary' : 'bg-slate-800'} rounded-2xl flex items-center justify-center shadow-lg shadow-primary/40`}>
-                                    <Music className="w-6 h-6 text-white" />
-                                  </div>
-                                  <div>
-                                    <p className="text-[10px] font-bold uppercase tracking-widest opacity-60">
-                                      {isConfirmed ? 'Próximo Serviço' : 'Escala Pendente'}
-                                    </p>
-                                    <h3 className="text-xl font-black italic">{s.ministry}</h3>
-                                  </div>
-                                </div>
-                                {isAdmin && (
-                                  <button 
-                                    onClick={() => setEditingScale(s)}
-                                    className="p-2 text-white/40 hover:text-white transition-colors"
-                                  >
-                                    <Pencil className="w-4 h-4" />
-                                  </button>
-                                )}
-                              </div>
-                              <div className="grid grid-cols-2 gap-4 mb-6">
-                                <div className="flex items-center space-x-2 text-white/80">
-                                  <Calendar className="w-4 h-4 text-primary" />
-                                  <span className="text-sm font-bold">{s.date}</span>
-                                </div>
-                                <div className="flex items-center space-x-2 text-primary font-black uppercase">
-                                  <span className="text-[10px] tracking-widest">{s.role}</span>
-                                </div>
-                              </div>
-                            <button 
-                              onClick={() => handleConfirmScale(s.id, s.status)}
-                              className={`w-full py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                                isConfirmed 
-                                ? 'bg-green-500/10 text-green-400 border border-green-500/20' 
-                                : 'bg-primary text-white hover:bg-opacity-90 shadow-xl shadow-primary/20 active:scale-[0.98]'
-                              }`}
-                            >
-                              {isConfirmed ? '✓ Presença Confirmada' : 'Confirmar Disponibilidade'}
-                            </button>
-                          </motion.div>
-                        );
-                      })}
-                    </AnimatePresence>
-                    
-                    {allScales.length > 1 && (
-                      <div className="flex justify-center space-x-1.5 mt-8">
-                        {allScales.map((_, i) => (
-                          <div 
-                            key={i} 
-                            className={`h-1 rounded-full transition-all duration-300 ${i === (currentScaleIndex % allScales.length) ? 'w-6 bg-primary' : 'w-1.5 bg-white/20'}`} 
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  ) : (
-                    <div className="py-6 text-center">
-                      <div className="w-16 h-16 bg-white/5 rounded-3xl flex items-center justify-center mx-auto mb-4 border border-white/10 border-dashed">
-                        <Calendar className="w-6 h-6 text-white/20" />
-                      </div>
-                      <p className="text-xs font-bold text-white/40 uppercase tracking-widest">Sem escalas em breve</p>
+                      <span>Domingo, 18:00h</span>
                     </div>
-                  )}
+                    <div className="flex items-center space-x-3 text-sm font-medium opacity-90">
+                      <div className="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center">
+                         <MapPin className="w-4 h-4 text-emerald-400" />
+                      </div>
+                      <span>Coração Transformado</span>
+                    </div>
+                  </div>
+
+                  <button 
+                    onClick={() => setActiveView('lives')}
+                    className="w-full bg-white text-slate-900 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 shadow-lg hover:bg-slate-50 transition-all active:scale-95"
+                  >
+                    <Play className="w-3.5 h-3.5 fill-current" />
+                    ASSISTIR AO VIVO
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            {/* Highlights Section */}
+            <section className="px-5 mb-10">
+              <div className="flex items-center justify-between mb-5 px-1">
+                <h3 className="font-black text-slate-800 uppercase text-[10px] tracking-[0.2em]">Destaques da Semana</h3>
+                <span className="w-8 h-px bg-slate-100"></span>
+              </div>
+              <div className="flex gap-5 overflow-x-auto pb-4 no-scrollbar -mx-5 px-5">
+                <motion.div 
+                  whileTap={{ scale: 0.98 }}
+                  className="min-w-[160px] bg-blue-50 rounded-[32px] p-6 flex flex-col items-center text-center border border-blue-100/50"
+                >
+                  <div className="w-20 h-20 bg-white rounded-3xl mb-4 overflow-hidden border-2 border-white shadow-xl shadow-blue-900/5">
+                    <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" alt="Pastor" />
+                  </div>
+                  <p className="text-[9px] font-black text-blue-800 uppercase tracking-widest mb-1">CULTO AO VIVO</p>
+                  <span className="text-[11px] font-bold text-slate-500 mb-4 block">Pr. Daniel Silva</span>
+                  <button onClick={() => setActiveView('lives')} className="text-[9px] font-black uppercase tracking-widest bg-blue-600 text-white px-5 py-2 rounded-xl shadow-lg shadow-blue-600/20">Assista Agora</button>
+                </motion.div>
+
+                <motion.div 
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setActiveView('locations')}
+                  className="min-w-[160px] bg-emerald-50 rounded-[32px] p-6 flex flex-col items-center text-center border border-emerald-100/50"
+                >
+                  <div className="flex -space-x-3 mb-4">
+                    {[1, 2, 3].map(i => (
+                      <div key={i} className="w-12 h-12 rounded-2xl bg-white border-2 border-white shadow-lg overflow-hidden">
+                        <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${i+10}`} alt="User" />
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[9px] font-black text-emerald-800 uppercase tracking-widest mb-1">Grupos Pequenos</p>
+                  <span className="text-[11px] font-bold text-slate-500 mb-4 block">Comunhão e Fé</span>
+                  <button className="text-[9px] font-black uppercase tracking-widest bg-emerald-600 text-white px-5 py-2 rounded-xl shadow-lg shadow-emerald-600/20">Encontrar</button>
+                </motion.div>
+
+                <motion.div 
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setActiveView('bible')}
+                  className="min-w-[160px] bg-amber-50 rounded-[32px] p-6 flex flex-col items-center text-center border border-amber-100/50"
+                >
+                  <div className="w-20 h-20 bg-white rounded-3xl mb-4 flex items-center justify-center border-2 border-white shadow-xl shadow-amber-900/5 text-amber-500">
+                    <BookOpen className="w-10 h-10" />
+                  </div>
+                  <p className="text-[9px] font-black text-amber-800 uppercase tracking-widest mb-1">BÍBLIA DIGITAL</p>
+                  <span className="text-[11px] font-bold text-slate-500 mb-4 block">Leitura Diária</span>
+                  <button className="text-[9px] font-black uppercase tracking-widest bg-amber-600 text-white px-5 py-2 rounded-xl shadow-lg shadow-amber-600/20">Ler Agora</button>
+                </motion.div>
+              </div>
+            </section>
+
+            {/* Explore More Grid */}
+            <section className="px-5 mb-10">
+              <div className="flex items-center justify-between mb-5 px-1">
+                <h3 className="font-black text-slate-800 uppercase text-[10px] tracking-[0.2em]">Explorar Mais</h3>
+                <span className="w-8 h-px bg-slate-100"></span>
+              </div>
+              <div className="grid grid-cols-4 gap-4 text-center">
+                <div onClick={() => setActiveView('devotionals')} className="flex flex-col items-center gap-3 cursor-pointer group">
+                  <div className="w-14 h-14 bg-slate-50 border border-slate-100 rounded-2xl flex items-center justify-center text-slate-600 group-hover:bg-blue-600 group-hover:text-white transition-all shadow-sm">
+                    <Video className="w-5 h-5" />
+                  </div>
+                  <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Pregações</span>
+                </div>
+                <div onClick={() => setActiveView('agenda')} className="flex flex-col items-center gap-3 cursor-pointer group">
+                  <div className="w-14 h-14 bg-slate-50 border border-slate-100 rounded-2xl flex items-center justify-center text-slate-600 group-hover:bg-blue-600 group-hover:text-white transition-all shadow-sm">
+                    <CalendarDays className="w-5 h-5" />
+                  </div>
+                  <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Agenda</span>
+                </div>
+                <div onClick={() => setActiveView('prayers')} className="flex flex-col items-center gap-3 cursor-pointer group">
+                  <div className="w-14 h-14 bg-orange-50 border border-orange-100 rounded-2xl flex items-center justify-center text-orange-600 group-hover:bg-orange-600 group-hover:text-white transition-all shadow-sm">
+                    <Heart className="w-5 h-5" />
+                  </div>
+                  <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Orações</span>
+                </div>
+                <div onClick={() => setActiveView('courses')} className="flex flex-col items-center gap-3 cursor-pointer group">
+                  <div className="w-14 h-14 bg-slate-50 border border-slate-100 rounded-2xl flex items-center justify-center text-slate-600 group-hover:bg-blue-600 group-hover:text-white transition-all shadow-sm">
+                    <BookOpen className="w-5 h-5" />
+                  </div>
+                  <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Cursos</span>
+                </div>
+              </div>
+            </section>
+
+            {/* Verse of the Day Footer Banner */}
+            <div className="px-5 mb-8">
+              <div className="bg-slate-50 border border-slate-100 p-8 rounded-[32px] text-center relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-4 opacity-5">
+                  <Zap className="w-20 h-20 text-blue-600" />
+                </div>
+                <p className="text-[8px] font-black text-blue-600 uppercase tracking-[0.3em] mb-4">Versículo do Dia</p>
+                <h4 className="text-sm font-bold text-slate-800 leading-relaxed italic mb-4">
+                  "{verseTitle || 'O Senhor é o meu pastor, nada me faltará.'}"
+                </h4>
+                <div className="inline-flex items-center space-x-2 bg-white px-4 py-1.5 rounded-full border border-slate-100 shadow-sm">
+                   <BookOpen className="w-3 h-3 text-blue-600" />
+                   <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">{verseRef || 'Salmos 23:1'}</span>
                 </div>
               </div>
             </div>
           </motion.div>
         );
 
+      case 'bible':
+        return (
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="pb-32 max-w-2xl mx-auto px-4 pt-12">
+            <div className="flex items-center justify-between mb-8 px-2">
+              <div className="flex items-center space-x-4">
+                {selectedBibleBook && (
+                  <button 
+                    onClick={() => {
+                      if (bibleContent) setBibleContent(null);
+                      else setSelectedBibleBook(null);
+                    }}
+                    className="p-3 bg-white border border-slate-100 rounded-2xl shadow-sm text-slate-400"
+                  >
+                    <ChevronLeft className="w-6 h-6" />
+                  </button>
+                )}
+                <h1 className="text-3xl font-black text-slate-800 tracking-tighter italic">
+                  {selectedBibleBook ? `${selectedBibleBook} ${selectedBibleChapter}` : 'Bíblia'}
+                </h1>
+              </div>
+              <button 
+                onClick={() => { setSelectedBibleBook(null); setBibleContent(null); }}
+                className="p-3 bg-white border border-slate-100 rounded-2xl shadow-sm text-slate-400"
+              >
+                <Search className="w-6 h-6" />
+              </button>
+            </div>
+
+            {!selectedBibleBook && !bibleSearchResults ? (
+              <>
+                <form 
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleBibleSearch();
+                  }}
+                  className="relative mb-8 bg-white border border-slate-100 p-2 rounded-[32px] flex items-center px-6 shadow-sm focus-within:ring-2 focus-within:ring-primary/20 transition-all mx-2"
+                >
+                   <Search className="w-5 h-5 text-slate-400 mr-3" />
+                   <input 
+                     type="text" 
+                     placeholder="Buscar na Bíblia (ex: Amor, Fé, João 3:16)" 
+                     value={bibleSearchQuery}
+                     onChange={(e) => setBibleSearchQuery(e.target.value)}
+                     className="bg-transparent border-none outline-none py-4 text-sm font-medium w-full" 
+                   />
+                   {bibleSearchQuery && (
+                     <button 
+                       type="button"
+                       onClick={() => {
+                         setBibleSearchQuery('');
+                         setBibleSearchResults(null);
+                       }}
+                       className="p-2 text-slate-300 hover:text-slate-500 transition-colors"
+                     >
+                       <X className="w-4 h-4" />
+                     </button>
+                   )}
+                </form>
+
+                <div className="bg-gradient-to-br from-indigo-50 to-white border border-indigo-100 rounded-[40px] p-8 shadow-xl shadow-indigo-100/50 mb-8 relative overflow-hidden mx-2">
+                  <div className="absolute top-4 right-4 text-indigo-200">
+                    <BookOpen className="w-16 h-16 opacity-20" />
+                  </div>
+                  <div className="relative z-10">
+                    <div className="flex items-center space-x-2 mb-4">
+                      <div className="w-1.5 h-6 bg-indigo-500 rounded-full" />
+                      <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500">Versículo do dia</p>
+                    </div>
+                    <h3 className="text-xl font-black text-indigo-900 leading-tight italic mb-4">
+                      {verseTitle}
+                    </h3>
+                    <p className="text-sm font-bold text-indigo-400 uppercase tracking-widest">{verseRef}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between mb-6 px-2">
+                  <h3 className="text-xl font-black text-slate-800 italic">Planos de leitura</h3>
+                  <button className="text-[10px] font-black text-primary uppercase tracking-widest">Ver todos</button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 mb-8 px-2">
+                  <div className="bg-emerald-50 border border-emerald-100 p-6 rounded-[32px] relative overflow-hidden group cursor-pointer hover:shadow-lg transition-all">
+                    <div className="relative z-10">
+                      <p className="text-[9px] font-black text-emerald-600 uppercase mb-1">Plano de 7 dias</p>
+                      <h4 className="text-sm font-bold text-emerald-900 leading-tight">Comece hoje</h4>
+                    </div>
+                    <Sprout className="absolute bottom-[-10px] right-[-10px] w-16 h-16 text-emerald-200 opacity-30 transform group-hover:scale-110 transition-transform" />
+                  </div>
+                  <div className="bg-purple-50 border border-purple-100 p-6 rounded-[32px] relative overflow-hidden group cursor-pointer hover:shadow-lg transition-all">
+                      <div className="relative z-10">
+                      <p className="text-[9px] font-black text-purple-600 uppercase mb-1">Plano de 30 dias</p>
+                      <h4 className="text-sm font-bold text-purple-900 leading-tight">Transformação</h4>
+                    </div>
+                    <Flame className="absolute bottom-[-10px] right-[-10px] w-16 h-16 text-purple-200 opacity-30 transform group-hover:scale-110 transition-transform" />
+                  </div>
+                </div>
+
+                <h3 className="text-xl font-black text-slate-800 mb-6 italic px-2">Livros da Bíblia</h3>
+                <div className="grid grid-cols-2 gap-3 px-2">
+                   {BIBLE_BOOKS.map((book, i) => (
+                     <button 
+                       key={i} 
+                       onClick={() => {
+                         setSelectedBibleBook(book);
+                         setSelectedBibleChapter(1);
+                       }}
+                       className="flex items-center justify-between p-5 bg-white border border-slate-100 rounded-[28px] group hover:border-primary/30 transition-all shadow-sm"
+                     >
+                       <span className="text-sm font-bold text-slate-700 truncate">{book}</span>
+                       <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-primary transition-all" />
+                     </button>
+                   ))}
+                </div>
+              </>
+            ) : isSearchingBible ? (
+              <div className="flex flex-col items-center justify-center p-20 space-y-4">
+                <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 animate-pulse">Pesquisando nas Escrituras...</p>
+              </div>
+            ) : bibleSearchResults ? (
+              <div className="mx-2 space-y-6 mb-32">
+                <div className="flex items-center justify-between mb-4">
+                   <h3 className="text-xl font-black text-slate-800 italic">Resultados para "{bibleSearchQuery}"</h3>
+                   <button 
+                     onClick={() => setBibleSearchResults(null)}
+                     className="text-xs font-black text-primary uppercase tracking-widest"
+                   >
+                     Limpar
+                   </button>
+                </div>
+                {bibleSearchResults.length > 0 ? (
+                  <div className="space-y-4">
+                    {bibleSearchResults.map((v: any, idx: number) => (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: idx * 0.05 }}
+                        key={idx} 
+                        className="p-6 bg-white border border-slate-100 rounded-[32px] shadow-sm hover:shadow-md transition-all cursor-pointer group"
+                        onClick={() => {
+                          const bookTitle = BIBLE_BOOKS.find(b => BIBLE_BOOKS_MAP[b] === v.book_name) || v.book_name;
+                          setSelectedBibleBook(bookTitle);
+                          setSelectedBibleChapter(v.chapter);
+                          setBibleSearchResults(null);
+                        }}
+                      >
+                         <div className="flex items-center justify-between mb-3">
+                           <span className="text-[10px] font-black text-primary uppercase tracking-[0.2em]">{v.book_name} {v.chapter}:{v.verse}</span>
+                           <ArrowRight className="w-4 h-4 text-slate-200 group-hover:text-primary transition-all" />
+                         </div>
+                         <p className="text-sm font-medium text-slate-800 leading-relaxed italic">
+                           "{v.text}"
+                         </p>
+                      </motion.div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-20 text-center bg-white rounded-[48px] border-4 border-dashed border-slate-50 italic text-slate-300 uppercase tracking-widest text-[10px] font-black">
+                    Nenhum versículo encontrado.
+                  </div>
+                )}
+              </div>
+            ) : isBibleLoading ? (
+              <div className="flex flex-col items-center justify-center p-20 space-y-4">
+                <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Abrindo Livro...</p>
+              </div>
+            ) : bibleContent ? (
+              <div className="bg-white rounded-[40px] border border-slate-100 p-8 shadow-xl mb-32 mx-2">
+                <div className="flex items-center justify-between mb-8">
+                  <button 
+                    disabled={selectedBibleChapter <= 1}
+                    onClick={() => setSelectedBibleChapter(prev => prev - 1)}
+                    className="p-3 bg-slate-50 rounded-2xl text-slate-400 disabled:opacity-20 transition-all active:scale-90"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Capítulo {selectedBibleChapter}</p>
+                  <button 
+                    onClick={() => setSelectedBibleChapter(prev => prev + 1)}
+                    className="p-3 bg-slate-50 rounded-2xl text-slate-400 transition-all active:scale-90"
+                  >
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+                </div>
+                
+                <div className="prose prose-slate max-w-none">
+                  {bibleContent.verses?.map((v: any, idx: number) => (
+                    <motion.p 
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: idx * 0.05 }}
+                      key={idx} 
+                      className="mb-4 text-slate-700 leading-relaxed font-serif"
+                    >
+                      <sup className="mr-2 text-[10px] font-black text-primary/40 italic">{v.verse}</sup>
+                      {v.text}
+                    </motion.p>
+                  ))}
+                </div>
+                
+                <div className="mt-12 flex justify-center">
+                  <button 
+                    onClick={() => {
+                       setSelectedBibleChapter(prev => prev + 1);
+                       window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    className="px-10 py-4 bg-primary text-white rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-primary/20"
+                  >
+                    Próximo Capítulo
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center p-20">
+                <p className="text-slate-400">Erro ao carregar o conteúdo. Tente novamente.</p>
+                <button onClick={() => fetchBibleChapter(selectedBibleBook!, selectedBibleChapter)} className="mt-4 text-primary font-bold">Recarregar</button>
+              </div>
+            )}
+          </motion.div>
+        );
+
+      case 'donations':
+        return (
+          <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="pb-32 max-w-2xl mx-auto px-4 pt-12">
+            <div className="flex items-center justify-between mb-10 px-2">
+              <h1 className="text-3xl font-black text-slate-800 tracking-tighter italic">Doar</h1>
+              <Heart className="w-6 h-6 text-red-500 fill-red-500/10" />
+            </div>
+
+            <div className="bg-gradient-to-br from-indigo-600 to-indigo-800 rounded-[3rem] p-10 text-white relative overflow-hidden shadow-2xl shadow-indigo-200/50 mb-10 mx-2 group">
+              <div className="absolute top-0 right-0 w-48 h-48 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl opacity-30" />
+              <div className="relative z-10">
+                <h2 className="text-3xl font-black italic tracking-tighter leading-tight mb-4">Gratidão que Transforma</h2>
+                <p className="text-sm text-indigo-100/80 font-medium leading-relaxed max-w-[200px]">Honre ao Senhor com os seus bens e com as primícias.</p>
+              </div>
+              <div className="absolute bottom-[-20px] right-[-20px] p-6 opacity-60">
+                 <Heart className="w-32 h-32 text-white/20 fill-white/10" />
+              </div>
+            </div>
+
+            <div className="mb-10 px-2">
+               <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 ml-1">Finalidade da Oferta</p>
+               <div className="flex items-center space-x-3 overflow-x-auto scrollbar-hide pb-2">
+                 {['Dízimo', 'Oferta', 'Missões', 'Construção'].map((type) => (
+                   <button 
+                     key={type} 
+                     onClick={() => {
+                       setTransactionType(type === 'Construção' ? 'Oferta' : type as any);
+                       setShowTransactionForm(true);
+                     }}
+                     className={`px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${transactionType === type ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-600/20' : 'bg-white text-slate-400 border border-slate-100 hover:border-indigo-200'}`}
+                   >
+                     {type}
+                   </button>
+                 ))}
+               </div>
+            </div>
+
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 ml-3">Método de Contribuição</p>
+            <div className="space-y-4 px-2">
+               {[
+                 { icon: Wallet, label: 'Saldo / Reservas', sub: 'Transação Segura e Instantânea', action: () => { setTransactionType('Oferta'); setShowTransactionForm(true); } },
+                 { icon: QrCode, label: 'PIX Institucional', sub: 'Confirmação via Chave ou QR', action: () => setActiveView('financial') },
+                 { icon: FileText, label: 'Boleto Bancário', sub: 'Compensação em até 48 horas', action: () => alert('Funcionalidade em implantação. Use PIX por enquanto.') }
+               ].map((method, i) => (
+                 <button key={i} onClick={method.action} className="w-full flex items-center justify-between p-7 bg-white border border-slate-100 rounded-[2.5rem] group hover:border-indigo-200 transition-all shadow-sm hover:shadow-xl hover:shadow-indigo-600/5">
+                   <div className="flex items-center space-x-5">
+                     <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-all duration-300">
+                       <method.icon className="w-6 h-6 text-slate-400 group-hover:text-white transition-colors" />
+                     </div>
+                     <div className="text-left">
+                       <h4 className="text-sm font-black text-slate-800 tracking-tight italic">{method.label}</h4>
+                       <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">{method.sub}</p>
+                     </div>
+                   </div>
+                   <ChevronRight className="w-5 h-5 text-slate-200 group-hover:text-indigo-600 transition-all group-hover:translate-x-1" />
+                 </button>
+               ))}
+            </div>
+
+          </motion.div>
+        );
+
+      case 'prayers':
+        return (
+          <motion.div initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }} className="pb-32 max-w-2xl mx-auto px-4 pt-12">
+            <div className="flex items-center justify-between mb-10 px-2">
+              <h1 className="text-3xl font-black text-slate-800 tracking-tighter italic">Pedidos de oração</h1>
+              <button className="p-3 bg-white border border-slate-100 rounded-2xl shadow-sm">
+                <Settings className="w-6 h-6 text-slate-400" />
+              </button>
+            </div>
+
+            <div className="bg-indigo-600 border border-indigo-700 rounded-[3rem] p-10 mb-10 shadow-2xl shadow-indigo-200/50 mx-2 text-white relative overflow-hidden group">
+               <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl" />
+               <h3 className="text-3xl font-black italic tracking-tighter mb-2">Envie seu Pedido</h3>
+               <p className="text-[10px] font-black text-indigo-200/80 mb-8 uppercase tracking-[0.2em] italic">Nossa liderança vai orar por você</p>
+               
+               <div className="space-y-6 relative z-10">
+                 <textarea 
+                   placeholder="Conte-nos como podemos interceder..." 
+                   className="w-full bg-white/5 border border-white/10 rounded-[2rem] p-8 text-sm font-medium outline-none text-white placeholder:text-indigo-200/50 min-h-[160px] shadow-inner focus:bg-white/10 transition-all"
+                 />
+                 <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
+                   <div className="flex items-center space-x-4 bg-white/5 px-6 py-4 rounded-2xl border border-white/5">
+                      <div className="w-10 h-5 bg-white/10 rounded-full relative cursor-pointer group/toggle">
+                         <div className="absolute top-1 left-1 w-3 h-3 bg-white rounded-full translate-x-0 transition-transform group-hover/toggle:scale-110" />
+                      </div>
+                      <span className="text-[10px] font-black text-indigo-100 uppercase tracking-widest">Identidade Oculta</span>
+                   </div>
+                   <button className="w-full sm:w-auto bg-white text-indigo-600 text-[10px] font-black uppercase tracking-[0.2em] px-10 py-5 rounded-[1.5rem] shadow-xl shadow-indigo-900/20 flex items-center justify-center space-x-3 hover:bg-secondary hover:text-white transition-all active:scale-95 group/submit">
+                     <Heart className="w-4 h-4 fill-current group-hover/submit:scale-110 transition-transform" />
+                     <span>Enviar Pedido</span>
+                   </button>
+                 </div>
+               </div>
+            </div>
+
+            <h3 className="text-xl font-black text-slate-800 mb-8 italic px-2">Pedidos Recentes</h3>
+            <div className="space-y-4 px-2 pb-12">
+               {[
+                 { name: 'Vitória da minha filha', date: 'Hoje', prayers: 12 },
+                 { name: 'Saúde do meu pai', date: 'Ontem', prayers: 45 },
+                 { name: 'Agradecimento pela família', date: 'Ontem', prayers: 8 }
+               ].map((p, i) => (
+                 <div key={i} className="bg-white p-7 rounded-[2.5rem] border border-slate-100 shadow-sm flex items-center justify-between group hover:border-indigo-200 hover:shadow-xl hover:shadow-indigo-600/5 transition-all">
+                   <div className="flex items-center space-x-4">
+                      <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center transition-all duration-300 group-hover:bg-indigo-600 group-hover:text-white">
+                         <Heart className="w-6 h-6 text-slate-200 group-hover:text-white transition-colors" />
+                      </div>
+                      <div className="text-left">
+                        <h4 className="text-sm font-black text-slate-800 tracking-tight italic">{p.name}</h4>
+                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-1">{p.date} • Interceção</p>
+                      </div>
+                   </div>
+                   <div className="flex items-center space-x-3 bg-red-50/50 px-4 py-2 rounded-xl group-hover:bg-red-500 transition-colors">
+                     <span className="text-[11px] font-black text-red-600 group-hover:text-white">{p.prayers}</span>
+                     <Heart className="w-4 h-4 text-red-500 fill-current group-hover:text-white" />
+                   </div>
+                 </div>
+               ))}
+            </div>
+          </motion.div>
+        );
+
+      case 'announcements':
+        return (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="pb-24 max-w-2xl mx-auto px-4 pt-12">
+            <div className="flex items-center space-x-4 mb-8">
+              <button onClick={() => setActiveView('home')} className="p-2 bg-white border border-slate-100 rounded-xl">
+                <ChevronRight className="w-5 h-5 rotate-180" />
+              </button>
+              <h1 className="text-3xl font-black text-slate-900">Todos os Avisos</h1>
+            </div>
+            <div className="space-y-4">
+              {announcements && announcements.length > 0 ? (
+                (announcements as any[]).map((a: any) => (
+                  <AnnouncementCard 
+                    key={a.id}
+                    id={a.id}
+                    title={a.title} 
+                    tag={a.tag} 
+                    date={a.date} 
+                    isAdmin={isAdmin || false}
+                    isPinned={a.isPinned}
+                    onDelete={(id) => handleDeleteItem('announcements', id)}
+                    onEdit={() => setEditingAnnouncement(a)}
+                    onClick={() => setViewingAnnouncement(a)}
+                  />
+                ))
+              ) : (
+                <div className="text-center py-20 opacity-30">
+                  <Bell className="w-12 h-12 mx-auto mb-4" />
+                  <p className="text-xs font-black uppercase tracking-widest">Nenhum aviso no momento</p>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        );
+
+      case 'ai-chat':
+        return (
+          <motion.div 
+            initial={{ opacity: 0, x: 20 }} 
+            animate={{ opacity: 1, x: 0 }} 
+            className="pb-24 max-w-2xl mx-auto px-4 pt-12 min-h-screen flex flex-col"
+          >
+            <div className="flex items-center space-x-4 mb-8">
+              <button onClick={() => setActiveView('home')} className="p-2 bg-white border border-slate-100 rounded-xl">
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <div>
+                <h1 className="text-3xl font-black text-slate-900 tracking-tight italic text-primary">Tire sua dúvida</h1>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Assistente Bíblico IA</p>
+              </div>
+            </div>
+
+            <div className="flex-1 space-y-6 mb-32 overflow-y-auto pr-2 scrollbar-hide">
+              <div className="bg-primary/10 border border-primary/20 p-6 rounded-[32px] text-slate-700">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-8 h-8 bg-primary rounded-xl flex items-center justify-center">
+                      <MessageSquare className="w-4 h-4 text-white" />
+                    </div>
+                    <span className="font-bold text-sm text-primary">Igreja Conectada IA</span>
+                  </div>
+                  {(aiResponse || aiError) && (
+                    <button 
+                      onClick={() => { setAiResponse(''); setAiQuestion(''); setAiError(''); }}
+                      className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-primary transition-colors"
+                    >
+                      Limpar
+                    </button>
+                  )}
+                </div>
+                <p className="text-sm font-medium leading-relaxed">
+                  Olá! Sou seu assistente cristão. Como posso te ajudar hoje com dúvidas sobre a Bíblia, vida cristã ou conselhos espirituais?
+                </p>
+              </div>
+
+              {aiResponse && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-white border border-slate-100 p-8 rounded-[40px] shadow-card text-slate-800"
+                >
+                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 flex items-center">
+                    <BookOpen className="w-4 h-4 mr-2" />
+                    Resposta do Assistente
+                  </div>
+                  <div className="prose prose-slate max-w-none text-sm font-medium leading-relaxed whitespace-pre-wrap">
+                    {aiResponse}
+                  </div>
+                </motion.div>
+              )}
+
+              {aiError && (
+                <div className="bg-red-50 border border-red-100 p-4 rounded-2xl text-red-600 text-xs font-bold text-center">
+                  {aiError}
+                </div>
+              )}
+
+              {isAiLoading && (
+                <div className="flex flex-col items-center justify-center py-10 opacity-40">
+                  <Activity className="w-10 h-10 animate-pulse text-primary mb-4" />
+                  <p className="text-[10px] font-black uppercase tracking-widest">Consultando as escrituras...</p>
+                </div>
+              )}
+            </div>
+
+            <div className="fixed bottom-24 left-0 right-0 px-4 max-w-2xl mx-auto z-40 lg:left-80 lg:mx-0 lg:max-w-none lg:pr-8">
+              <form 
+                onSubmit={handleAiAsk}
+                className="bg-white/80 backdrop-blur-xl border border-white shadow-2xl p-4 rounded-[32px] flex items-center space-x-3"
+              >
+                <input 
+                  type="text"
+                  placeholder="Faça sua pergunta..."
+                  className="flex-1 bg-slate-50 border border-slate-100 rounded-2xl py-4 px-6 text-sm font-medium outline-none focus:ring-2 focus:ring-primary/10 transition-all"
+                  value={aiQuestion}
+                  onChange={e => setAiQuestion(e.target.value)}
+                  disabled={isAiLoading}
+                />
+                <button 
+                  type="submit"
+                  disabled={isAiLoading || !aiQuestion.trim()}
+                  className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg transition-all active:scale-95 ${
+                    isAiLoading || !aiQuestion.trim() 
+                    ? 'bg-slate-200 text-slate-400' 
+                    : 'bg-primary text-white shadow-primary/20 hover:scale-105'
+                  }`}
+                >
+                  <MessageSquare className="w-6 h-6" />
+                </button>
+              </form>
+            </div>
+          </motion.div>
+        );
+
       case 'ministries':
+        if (!isScaleUnlocked && !isAdminUnlocked) {
+          return (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="min-h-[60vh] flex flex-col items-center justify-center px-4">
+              <div className="bg-white p-10 rounded-[48px] shadow-2xl border border-slate-100 w-full max-w-sm text-center relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-full h-1.5 bg-primary" />
+                <div className="w-16 h-16 bg-slate-900 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-xl">
+                  <ShieldCheck className="w-8 h-8 text-primary" />
+                </div>
+                <h2 className="text-2xl font-black text-slate-900 mb-2 italic">Acesso Restrito</h2>
+                <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-8">
+                  Digite a senha para ver as escalas
+                </p>
+                
+                <form onSubmit={handleScaleLogin} className="space-y-4">
+                  <div className="relative">
+                    <input 
+                      autoFocus
+                      type={showScaleViewPassword ? "text" : "password"}
+                      placeholder="Senha de Acesso"
+                      className="w-full bg-slate-50 border border-slate-100 rounded-2xl py-4 pr-12 pl-6 text-center text-sm font-bold outline-none focus:ring-4 focus:ring-primary/5 transition-all"
+                      value={scalePasswordInput}
+                      onChange={e => setScalePasswordInput(e.target.value)}
+                    />
+                    <button 
+                      type="button"
+                      onClick={() => setShowScaleViewPassword(!showScaleViewPassword)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 hover:text-primary transition-colors"
+                    >
+                      {showScaleViewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <button 
+                    type="submit"
+                    className="w-full py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl active:scale-[0.98] transition-all hover:bg-primary"
+                  >
+                    Ver Escalas
+                  </button>
+                </form>
+              </div>
+            </motion.div>
+          );
+        }
+
         if (selectedMinistry) {
           const ministryScales = (allScales as any[] || []).filter(s => s.ministry === selectedMinistry);
+          const userMember = members.find(m => m.email === user?.email);
+          
           return (
             <motion.div 
               initial={{ opacity: 0, x: 20 }} 
@@ -1850,56 +3170,161 @@ export default function App() {
               </div>
 
               <SectionHeader title="Próximas Escalas" />
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {ministryScales.length > 0 ? (
-                  ministryScales.map(s => (
-                    <div key={s.id} className="p-5 bg-white rounded-[24px] border border-slate-100 flex items-start justify-between shadow-card hover:border-primary/20 transition-all">
-                      <div>
-                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-primary mb-1">{s.ministry}</p>
-                        <h4 className="text-lg font-bold text-slate-800">{s.role}</h4>
-                        <div className="flex items-center space-x-3 mt-2 text-xs font-medium text-slate-400">
-                          <span className="flex items-center"><Calendar className="w-3 h-3 mr-1 opacity-60" /> {s.date}</span>
+                  ministryScales.map(s => {
+                    const isMyScale = s.memberId === userMember?.id || s.replacementId === userMember?.id;
+                    
+                    return (
+                      <div key={s.id} className={`p-5 bg-white rounded-[32px] border ${isMyScale ? 'border-primary shadow-lg shadow-primary/5' : 'border-slate-100'} flex flex-col space-y-4 shadow-sm hover:border-primary/20 transition-all`}>
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center space-x-4">
+                            <div className="w-12 h-12 rounded-2xl overflow-hidden ring-1 ring-slate-100 bg-slate-50 flex-shrink-0">
+                               <img src={s.memberAvatar || `https://picsum.photos/seed/${s.memberId}/100`} alt={s.memberName} referrerPolicy="no-referrer" />
+                            </div>
+                            <div>
+                               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-0.5">{s.role}</p>
+                               <h4 className="text-base font-black text-slate-800">{s.memberName}</h4>
+                               <div className="flex items-center space-x-2 mt-1">
+                                 <span className="text-[9px] font-bold text-primary flex items-center"><Calendar className="w-3 h-3 mr-1" /> {s.date}</span>
+                                 {s.status === 'confirmed' && <span className="px-2 py-0.5 bg-green-50 text-green-600 rounded-full text-[8px] font-black uppercase">Confirmado</span>}
+                                 {s.status === 'needs_replacement' && <span className="px-2 py-0.5 bg-amber-50 text-amber-600 rounded-full text-[8px] font-black uppercase animate-pulse">Solicitado Substituto</span>}
+                               </div>
+                            </div>
+                          </div>
+                          {isAdmin && (
+                            <div className="flex space-x-1">
+                              <button onClick={() => setEditingScale(s)} className="p-2 text-slate-300 hover:text-primary"><Pencil className="w-4 h-4" /></button>
+                              <button onClick={() => handleDeleteItem('scales', s.id)} className="p-2 text-slate-300 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        {isAdmin && (
-                          <div className="flex items-center space-x-1 mr-2 border-r border-slate-100 pr-2">
+
+                        {isMyScale && s.status !== 'confirmed' && s.status !== 'needs_replacement' && (
+                          <div className="flex space-x-2">
                              <button 
-                               onClick={() => setEditingScale(s)}
-                               className="p-2 text-slate-300 hover:text-primary transition-colors hover:bg-primary/5 rounded-lg"
+                               onClick={() => handleConfirmScale(s.id, s.status)}
+                               className="flex-1 py-3 bg-primary text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-primary/20"
                              >
-                               <Pencil className="w-3.5 h-3.5" />
+                               Confirmar Presença
                              </button>
                              <button 
-                               onClick={() => handleDeleteItem('scales', s.id)}
-                               className="p-2 text-slate-300 hover:text-red-500 transition-colors hover:bg-red-50 rounded-lg"
+                               onClick={() => {
+                                 const reason = prompt("Por que precisa de substituição?");
+                                 if (reason) handleRequestReplacement(s.id, reason);
+                               }}
+                               className="flex-1 py-3 bg-slate-50 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest border border-slate-100"
                              >
-                               <Trash2 className="w-3.5 h-3.5" />
+                               Pedir Troca
                              </button>
                           </div>
                         )}
-                        <button 
-                          onClick={() => handleConfirmScale(s.id, s.status)}
-                          className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                          s.status === 'confirmed' 
-                            ? 'bg-green-100 text-green-700' 
-                            : 'bg-slate-100 text-slate-600 border border-slate-200'
-                          }`}
-                        >
-                          {s.status === 'confirmed' ? 'OK' : 'CONFIRMAR'}
-                        </button>
+                        
+                        {isMyScale && s.status === 'confirmed' && (
+                           <button 
+                             onClick={() => handleConfirmScale(s.id, s.status)}
+                             className="w-full py-3 bg-green-50 text-green-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-green-100"
+                           >
+                             Presença Confirmada
+                           </button>
+                        )}
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 ) : (
-                  <div className="text-center py-20 opacity-40 bg-white rounded-[32px] border border-slate-100 border-dashed">
-                    <Users className="w-12 h-12 mx-auto mb-4" />
+                  <div className="text-center py-20 opacity-40 bg-white rounded-[40px] border border-slate-100 border-dashed">
+                    <Zap className="w-12 h-12 mx-auto mb-4" />
                     <p className="text-[10px] font-black uppercase tracking-[0.2em]">Nenhuma escala encontrada</p>
                   </div>
                 )}
               </div>
 
-              <SectionHeader title="Membros do Departamento" />
+              <SectionHeader 
+                title="Membros do Departamento" 
+                onAdd={isAdmin ? () => {
+                  setNewMember({ ...newMember, name: '', role: '', phone: '', email: '', ministry: selectedMinistry || '' });
+                  setShowMemberForm(true);
+                } : undefined}
+              />
+
+              <AnimatePresence>
+                {showMemberForm && (
+                  <motion.div 
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="mb-6 overflow-hidden"
+                  >
+                    <form onSubmit={async (e) => {
+                      e.preventDefault();
+                      await handleCreateMember(e);
+                      setShowMemberForm(false);
+                    }} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-xl space-y-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="text-base font-bold italic">Vincular Novo Membro</h4>
+                        <button type="button" onClick={() => setShowMemberForm(false)} className="p-1.5 text-slate-400 hover:text-slate-600 transition-colors"><X className="w-4 h-4" /></button>
+                      </div>
+                      <div className="grid grid-cols-1 gap-4">
+                        <div>
+                          <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Nome Completo</label>
+                          <input 
+                            required
+                            type="text" 
+                            className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs font-bold outline-none focus:ring-2 focus:ring-primary/10"
+                            value={newMember.name}
+                            onChange={e => setNewMember({...newMember, name: e.target.value})}
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Função / Instrumento</label>
+                            <input 
+                              required
+                              type="text" 
+                              className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs font-bold outline-none focus:ring-2 focus:ring-primary/10"
+                              value={newMember.role}
+                              onChange={e => setNewMember({...newMember, role: e.target.value})}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Ministério</label>
+                            <select 
+                              className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs font-bold outline-none"
+                              value={newMember.ministry}
+                              onChange={e => setNewMember({...newMember, ministry: e.target.value})}
+                            >
+                              {MINISTRIES.map(m => <option key={m} value={m}>{m}</option>)}
+                            </select>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                           <div>
+                             <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Telefone</label>
+                             <input 
+                               type="text" 
+                               placeholder="(00) 00000-0000"
+                               className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs font-bold outline-none focus:ring-2 focus:ring-primary/10"
+                               value={newMember.phone}
+                               onChange={e => setNewMember({...newMember, phone: e.target.value})}
+                             />
+                           </div>
+                           <div>
+                             <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">E-mail</label>
+                             <input 
+                               type="email" 
+                               placeholder="email@exemplo.com"
+                               className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs font-bold outline-none focus:ring-2 focus:ring-primary/10"
+                               value={newMember.email}
+                               onChange={e => setNewMember({...newMember, email: e.target.value})}
+                             />
+                           </div>
+                        </div>
+                      </div>
+                      <button type="submit" className="w-full py-4 bg-primary text-white text-[10px] font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-primary/20">Finalizar Vínculo</button>
+                    </form>
+                  </motion.div>
+                )}
+              </AnimatePresence>
               <div className="space-y-3">
                 {members && members.filter(m => m.ministry === selectedMinistry).length > 0 ? (
                   members.filter(m => m.ministry === selectedMinistry).map(member => (
@@ -1960,20 +3385,27 @@ export default function App() {
           >
             <SectionHeader title="Ministérios" />
             <div className="px-4 space-y-4">
-              {['Louvor', 'Mídia', 'Recepção', 'Crianças', 'Apoio', 'Corpo Diaconal'].map((m) => (
+              {[
+                { name: 'Louvor', icon: Music },
+                { name: 'Mídia', icon: Video },
+                { name: 'Recepção', icon: Users },
+                { name: 'Crianças', icon: Heart },
+                { name: 'Apoio', icon: Shield },
+                { name: 'Corpo Diaconal', icon: Users }
+              ].map((m) => (
                 <div 
-                  key={m} 
-                  onClick={() => setSelectedMinistry(m)}
+                  key={m.name} 
+                  onClick={() => setSelectedMinistry(m.name)}
                   className="flex items-center justify-between p-5 bg-white rounded-2xl border border-slate-100 group cursor-pointer hover:shadow-card hover:bg-slate-50 transition-all"
                 >
                   <div className="flex items-center space-x-4">
                     <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center group-hover:bg-primary transition-colors">
-                      <Users className="w-6 h-6 text-slate-400 group-hover:text-white" />
+                      <m.icon className="w-6 h-6 text-slate-400 group-hover:text-white" />
                     </div>
                     <div>
-                      <h3 className="text-lg font-bold text-slate-800">{m}</h3>
+                      <h3 className="text-lg font-bold text-slate-800">{m.name}</h3>
                       <p className="text-[10px] text-slate-400 uppercase font-black tracking-[0.15em]">
-                        {(allScales as any[] || []).filter(s => s.ministry === m).length} Escalas Ativas
+                        {(allScales as any[] || []).filter(s => s.ministry === m.name).length} Escalas Montadas
                       </p>
                     </div>
                   </div>
@@ -1982,7 +3414,7 @@ export default function App() {
               ))}
             </div>
 
-            <SectionHeader title="Minhas Escalas" />
+            <SectionHeader title="Minhas Escalas Confirmadas" />
             <div className="px-4 space-y-3">
               {allScales.filter(s => confirmedScales.includes(s.id)).length > 0 ? (
                 allScales.filter(s => confirmedScales.includes(s.id)).map(s => (
@@ -1995,38 +3427,15 @@ export default function App() {
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
-                      {isAdmin && (
-                        <div className="flex items-center space-x-1 mr-2 border-r border-slate-100 pr-2">
-                           <button 
-                             onClick={() => setEditingScale(s)}
-                             className="p-2 text-slate-300 hover:text-primary transition-colors hover:bg-primary/5 rounded-lg"
-                           >
-                             <Pencil className="w-3.5 h-3.5" />
-                           </button>
-                           <button 
-                             onClick={() => handleDeleteItem('scales', s.id)}
-                             className="p-2 text-slate-300 hover:text-red-500 transition-colors hover:bg-red-50 rounded-lg"
-                           >
-                             <Trash2 className="w-3.5 h-3.5" />
-                           </button>
-                        </div>
-                      )}
-                      <button 
-                        onClick={() => handleConfirmScale(s.id, s.status)}
-                      className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                      s.status === 'confirmed' 
-                        ? 'bg-green-100 text-green-700' 
-                        : 'bg-slate-100 text-slate-600 border border-slate-200'
-                      }`}
-                    >
-                      {s.status === 'confirmed' ? 'OK' : 'CONFIRMAR'}
-                    </button>
+                      <div className="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-green-100 text-green-700">
+                        CONFIRMADO
+                      </div>
+                    </div>
                   </div>
-                </div>
-              ))
+                ))
               ) : (
                 <div className="text-center py-12 opacity-50 bg-white rounded-3xl border border-slate-50 border-dashed">
-                  <p className="text-xs font-bold uppercase tracking-widest">Nenhuma escala pendente</p>
+                  <p className="text-xs font-bold uppercase tracking-widest">Nenhuma escala confirmada ainda</p>
                 </div>
               )}
             </div>
@@ -2045,99 +3454,120 @@ export default function App() {
             animate={{ opacity: 1 }}
             className="pb-32 max-w-2xl mx-auto px-4 pt-10"
           >
-            <div className="flex items-center space-x-3 mb-8 bg-slate-900/5 p-2 rounded-2xl w-fit border border-slate-100">
-              <div className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center">
-                <Shield className="w-5 h-5 text-emerald-400" />
+            <div className="flex items-center justify-between mb-8 px-1">
+              <div className="flex items-center space-x-3 bg-slate-50 p-2 rounded-xl w-fit border border-slate-100">
+                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+                  <Shield className="w-5 h-5 text-white" />
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-600">Finanças & Privacidade</span>
               </div>
-              <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-800 italic">Finanças & Privacidade</span>
+
+              {isAdmin && (
+                <div className="flex items-center space-x-2">
+                  <span className="text-[9px] font-bold uppercase text-slate-400 tracking-widest hidden md:block">Privacidade:</span>
+                  <button 
+                    onClick={handleTogglePrivacyMode}
+                    className={`flex items-center space-x-2 px-5 py-2.5 rounded-xl text-[9px] font-bold uppercase tracking-widest border transition-all shadow-sm active:scale-95 ${
+                      privacyMode === 'anonymous' 
+                        ? 'bg-accent text-white border-accent' 
+                        : 'bg-primary text-white border-primary'
+                    }`}
+                  >
+                    {privacyMode === 'anonymous' ? (
+                      <><ShieldCheck className="w-4 h-4" /> <span>Anônimo</span></>
+                    ) : (
+                      <><Users className="w-4 h-4" /> <span>Liderança</span></>
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Fintech Card Header */}
-            <div className="bg-slate-900 rounded-[48px] p-10 text-white relative overflow-hidden mb-12 shadow-2xl shadow-indigo-200">
+            <div className="bg-primary rounded-[20px] p-8 text-white relative overflow-hidden mb-8 shadow-sm">
               <div className="relative z-10">
                 <div className="flex justify-between items-start mb-10">
                   <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.4em] opacity-50 mb-2">Total Consolidado (Mês)</p>
-                    <h2 className="text-5xl font-black tracking-tighter italic">R$ {totalArrecadado.toLocaleString()}</h2>
+                    <p className="text-[9px] font-bold uppercase tracking-[0.3em] opacity-80 mb-2">Total Consolidado (Mês)</p>
+                    <h2 className="text-4xl font-bold tracking-tight">R$ {totalArrecadado.toLocaleString()}</h2>
                   </div>
-                  <div className="w-14 h-14 bg-white/10 rounded-3xl backdrop-blur-xl flex items-center justify-center border border-white/10">
-                     <TrendingUp className="w-7 h-7 text-emerald-400" />
+                  <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                     <TrendingUp className="w-6 h-6 text-white" />
                   </div>
                 </div>
 
                 <div className="space-y-4">
                   <div className="flex justify-between items-end">
                      <div>
-                       <p className="text-[10px] font-black uppercase tracking-widest opacity-50 mb-1">Meta Mensal</p>
-                       <p className="text-xl font-bold">R$ {progressTarget.toLocaleString()}</p>
+                       <p className="text-[9px] font-bold uppercase tracking-widest opacity-80 mb-1">Meta Mensal</p>
+                       <p className="text-lg font-bold">R$ {progressTarget.toLocaleString()}</p>
                      </div>
-                     <span className="text-sm font-black italic">{Math.round((totalArrecadado / progressTarget) * 100)}%</span>
+                     <span className="text-xs font-bold">{Math.round((totalArrecadado / progressTarget) * 100)}%</span>
                   </div>
-                  <div className="w-full h-3 bg-white/10 rounded-full overflow-hidden">
+                  <div className="w-full h-2 bg-white/20 rounded-full overflow-hidden">
                     <motion.div 
                       initial={{ width: 0 }}
                       animate={{ width: `${Math.min((totalArrecadado / progressTarget) * 100, 100)}%` }}
                       transition={{ duration: 1.5, ease: "easeOut" }}
-                      className="h-full bg-gradient-to-r from-emerald-400 to-indigo-400 rounded-full"
+                      className="h-full bg-white rounded-full"
                     />
                   </div>
                 </div>
               </div>
-              <div className="absolute -bottom-20 -right-20 w-80 h-80 bg-primary/20 rounded-full blur-[100px]" />
             </div>
 
             {/* Quick Stats */}
-            <div className="grid grid-cols-2 gap-4 mb-12">
-               <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm text-center">
-                  <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                    <Activity className="w-6 h-6 text-indigo-600" />
+            <div className="grid grid-cols-2 gap-4 mb-8">
+               <div className="bg-white p-6 rounded-[20px] border border-slate-100 shadow-sm text-center">
+                  <div className="w-10 h-10 bg-primary/5 rounded-xl flex items-center justify-center mx-auto mb-4">
+                    <Activity className="w-5 h-5 text-primary" />
                   </div>
-                  <h4 className="text-2xl font-black text-slate-900">{totalOfertasCount}</h4>
-                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mt-1">Contribuições</p>
+                  <h4 className="text-2xl font-bold text-slate-800 tracking-tight">{totalOfertasCount}</h4>
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mt-1">Contribuições</p>
                </div>
-               <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm text-center">
-                  <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                    <CheckCircle2 className="w-6 h-6 text-emerald-600" />
+               <div className="bg-white p-6 rounded-[20px] border border-slate-100 shadow-sm text-center">
+                  <div className="w-10 h-10 bg-accent/5 rounded-xl flex items-center justify-center mx-auto mb-4">
+                    <Heart className="w-5 h-5 text-accent" />
                   </div>
-                  <h4 className="text-2xl font-black text-slate-900">R$ {totalOfertasCount > 0 ? (totalArrecadado / totalOfertasCount).toFixed(0) : 0}</h4>
-                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mt-1">Média Geral</p>
+                  <h4 className="text-2xl font-bold text-slate-800 tracking-tight">R$ {totalOfertasCount > 0 ? (totalArrecadado / totalOfertasCount).toFixed(0) : 0}</h4>
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mt-1">Média Geral</p>
                </div>
             </div>
 
             {/* Contribution Actions */}
-            <div className="grid grid-cols-2 gap-4 mb-12">
+            <div className="grid grid-cols-2 gap-4 mb-8">
               <button 
                 onClick={() => { setTransactionType('Dízimo'); setShowTransactionForm(true); }}
-                className="bg-primary text-white p-8 rounded-[40px] shadow-xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all text-center group"
+                className="bg-primary text-white p-6 rounded-[20px] shadow-sm hover:scale-105 active:scale-95 transition-all text-center group"
               >
-                <Plus className="w-8 h-8 mx-auto mb-4 group-hover:rotate-90 transition-transform" />
-                <h3 className="font-black italic text-xl">Dízimo</h3>
-                <p className="text-[10px] font-black uppercase opacity-60 mt-1">Fidelidade</p>
+                <Plus className="w-6 h-6 mx-auto mb-3 group-hover:rotate-90 transition-transform" />
+                <h3 className="font-bold text-lg">Dízimo</h3>
+                <p className="text-[10px] font-semibold uppercase opacity-70 mt-1">Fidelidade</p>
               </button>
               <button 
                 onClick={() => { setTransactionType('Oferta'); setShowTransactionForm(true); }}
-                className="bg-slate-900 text-white p-8 rounded-[40px] shadow-xl shadow-slate-900/10 hover:scale-105 active:scale-95 transition-all text-center group"
+                className="bg-accent text-white p-6 rounded-[20px] shadow-sm hover:scale-105 active:scale-95 transition-all text-center group"
               >
-                <Heart className="w-8 h-8 mx-auto mb-4 group-hover:scale-125 transition-transform" />
-                <h3 className="font-black italic text-xl">Oferta</h3>
-                <p className="text-[10px] font-black uppercase opacity-60 mt-1">Generosidade</p>
+                <Heart className="w-6 h-6 mx-auto mb-3 group-hover:scale-110 transition-transform" />
+                <h3 className="font-bold text-lg">Oferta</h3>
+                <p className="text-[10px] font-semibold uppercase opacity-70 mt-1">Generosidade</p>
               </button>
             </div>
 
             {/* Double Tab System */}
-            <div className="bg-white rounded-[48px] border border-slate-100 shadow-lg overflow-hidden">
-               <div className="flex p-2 bg-slate-50">
+            <div className="bg-white rounded-[20px] border border-slate-100 shadow-sm overflow-hidden">
+               <div className="flex p-1.5 bg-slate-50">
                   <button 
                     onClick={() => setActiveHomeTab('contributions')}
-                    className={`flex-1 py-4 rounded-[32px] text-[10px] font-black uppercase tracking-widest transition-all ${activeHomeTab === 'contributions' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}
+                    className={`flex-1 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${activeHomeTab === 'contributions' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}
                   >
-                    Feed Público (Anônimo)
+                    Mural Público
                   </button>
                   <button 
                     onClick={() => setActiveHomeTab('benevolence')}
-                    className={`flex-1 py-4 rounded-[32px] text-[10px] font-black uppercase tracking-widest transition-all ${activeHomeTab === 'benevolence' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}
+                    className={`flex-1 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${activeHomeTab === 'benevolence' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}
                   >
-                    Meu Histórico Privado
+                    Histórico Privado
                   </button>
                </div>
 
@@ -2223,47 +3653,42 @@ export default function App() {
             </div>
 
             {/* Admin Overview (Conditional) */}
-            {isAdmin && isAdminUnlocked && privacyMode === 'leadership' && (
+            {isAdmin && isAdminUnlocked && (
               <div className="mt-12 space-y-6">
-                 <div className="flex items-center space-x-3 mb-4">
-                    <div className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center">
-                      <Settings className="w-5 h-5 text-white" />
+                 <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center">
+                        <Settings className="w-5 h-5 text-white" />
+                      </div>
+                      <h3 className="text-xl font-black italic">Gestão Admin de Fluxo</h3>
                     </div>
-                    <h3 className="text-xl font-black italic">Gestão Admin de Fluxo</h3>
+                    {privacyMode === 'anonymous' && (
+                      <span className="px-3 py-1 bg-amber-50 text-amber-600 rounded-full text-[8px] font-black uppercase tracking-widest border border-amber-100">Visão Admin (Sigilo Ativo)</span>
+                    )}
                  </div>
                  <div className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden">
-                    {(financialData as any[]).map((t, idx) => (
-                      <div key={idx} className="p-6 border-b border-slate-50 flex items-center justify-between hover:bg-slate-50 transition-all">
-                         <div className="flex items-center space-x-4">
-                            <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${t.userId}`} className="w-10 h-10 rounded-xl bg-slate-100" alt="avatar" />
-                            <div>
-                               <p className="text-sm font-bold text-slate-900">{t.userName}</p>
-                               <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{t.type} • {t.date?.toDate().toLocaleDateString()}</p>
-                            </div>
-                         </div>
-                         <p className="text-sm font-black text-slate-900">R$ {t.amount.toLocaleString()}</p>
+                    {(financialData as any[]).length > 0 ? (
+                      (financialData as any[]).map((t, idx) => (
+                        <div key={idx} className="p-6 border-b border-slate-50 flex items-center justify-between hover:bg-slate-50 transition-all">
+                           <div className="flex items-center space-x-4">
+                              <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${t.userId}`} className="w-10 h-10 rounded-xl bg-slate-100" alt="avatar" />
+                              <div>
+                                 <p className="text-sm font-bold text-slate-900">{t.userName || 'Anônimo'}</p>
+                                 <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{t.type} • {t.date?.toDate().toLocaleDateString()}</p>
+                              </div>
+                           </div>
+                           <p className="text-sm font-black text-slate-900">R$ {t.amount.toLocaleString()}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="p-12 text-center opacity-30">
+                        <p className="text-xs font-black uppercase tracking-widest">Nenhuma transação registrada</p>
                       </div>
-                    ))}
+                    )}
                  </div>
               </div>
             )}
 
-            {/* Admin Anonymity Notice */}
-            {isAdmin && privacyMode === 'anonymous' && (
-              <div className="mt-12 p-8 bg-emerald-50 rounded-[40px] border border-emerald-100 text-center">
-                 <Shield className="w-10 h-10 text-emerald-500 mx-auto mb-4" />
-                 <h4 className="text-lg font-black text-emerald-900 italic">Sigilo Absoluto Ativo</h4>
-                 <p className="text-xs text-emerald-700 font-medium leading-relaxed mt-2 p-4">
-                    Neste modo, nem mesmo administradores podem acessar a identidade dos ofertantes vinculada aos valores. O sistema garante privacidade total para a paz da congregação.
-                 </p>
-                 <button 
-                  onClick={handleTogglePrivacyMode}
-                  className="mt-6 px-8 py-3 bg-white text-emerald-600 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-sm hover:shadow-md transition-all"
-                 >
-                   Alternar para Modo Liderança
-                 </button>
-              </div>
-            )}
           </motion.div>
         );
 
@@ -2334,31 +3759,31 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="p-8 bg-slate-900 rounded-[48px] text-white shadow-2xl relative overflow-hidden group">
-                <div className="absolute bottom-0 right-0 w-64 h-64 bg-primary/20 rounded-full translate-y-1/2 translate-x-1/2 blur-[80px]" />
+              <div className="p-8 bg-card border border-primary/10 rounded-[48px] text-slate-800 shadow-2xl relative overflow-hidden group">
+                <div className="absolute bottom-0 right-0 w-64 h-64 bg-primary/5 rounded-full translate-y-1/2 translate-x-1/2 blur-[80px]" />
                 <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
-                  <h3 className="text-2xl font-black">Dash Liderança</h3>
-                  <div className="bg-primary/20 p-3 rounded-2xl backdrop-blur-sm px-4">
+                  <h3 className="text-2xl font-black italic tracking-tighter">Dash Liderança</h3>
+                  <div className="bg-primary/10 p-3 rounded-2xl px-4 flex items-center justify-center">
                     <BarChart3 className="w-5 h-5 text-primary" />
                   </div>
                 </div>
                 <div className="grid grid-cols-3 gap-4 relative z-10 mb-8">
-                  <div className="bg-white/5 p-5 rounded-[28px] border border-white/5 text-center">
-                    <p className="text-3xl font-black">156</p>
-                    <p className="text-[9px] uppercase tracking-widest font-bold opacity-50 mt-1">Membros</p>
+                  <div className="bg-slate-50 p-5 rounded-[28px] border border-slate-100 text-center">
+                    <p className="text-3xl font-black text-primary">156</p>
+                    <p className="text-[9px] uppercase tracking-widest font-black text-slate-400 mt-1">Membros</p>
                   </div>
-                  <div className="bg-white/5 p-5 rounded-[28px] border border-white/5 text-center">
-                    <p className="text-3xl font-black">12</p>
-                    <p className="text-[9px] uppercase tracking-widest font-bold opacity-50 mt-1">Visitantes</p>
+                  <div className="bg-slate-50 p-5 rounded-[28px] border border-slate-100 text-center">
+                    <p className="text-3xl font-black text-secondary">12</p>
+                    <p className="text-[9px] uppercase tracking-widest font-black text-slate-400 mt-1">Visitantes</p>
                   </div>
-                <div className="bg-white/5 p-5 rounded-[28px] border border-white/5 text-center">
-                    <p className="text-3xl font-black">92%</p>
-                    <p className="text-[9px] uppercase tracking-widest font-bold opacity-50 mt-1">Presença</p>
+                <div className="bg-slate-50 p-5 rounded-[28px] border border-slate-100 text-center">
+                    <p className="text-3xl font-black text-slate-700">92%</p>
+                    <p className="text-[9px] uppercase tracking-widest font-black text-slate-400 mt-1">Presença</p>
                   </div>
                 </div>
                 <button 
                   onClick={() => setActiveView('admin')}
-                  className="w-full py-4.5 rounded-[24px] bg-white text-slate-900 text-xs font-black uppercase tracking-widest shadow-xl shadow-black/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                  className="w-full py-5 rounded-[24px] bg-primary text-white text-xs font-black uppercase tracking-widest shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
                 >
                   Painel Administrativo
                 </button>
@@ -2369,62 +3794,88 @@ export default function App() {
 
       case 'agenda':
         return (
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="pb-24 max-w-2xl mx-auto px-4 pt-12">
-            <SectionHeader 
-              title="Nossa Agenda" 
-              onAdd={isAdmin ? () => { setShowAgendaForm(true); setActiveView('more'); } : undefined}
-            />
-            
-            <div className="flex flex-nowrap overflow-x-auto pb-4 scrollbar-hide mb-8">
-              {[...Array(7)].map((_, i) => (
-                <div key={i} className={`inline-flex flex-col items-center justify-center w-16 h-24 rounded-[28px] mr-3 transition-all ${i === 0 ? 'bg-primary text-white shadow-xl shadow-primary/30 scale-105' : 'bg-white border border-slate-100 text-slate-400 shadow-sm'}`}>
-                  <span className="text-[9px] uppercase font-black mb-1 opacity-70">{['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'][i]}</span>
-                  <span className="text-2xl font-black">{19 + i}</span>
-                  {i === 2 && <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full mt-1" />}
-                </div>
-              ))}
+          <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="pb-32 max-w-2xl mx-auto px-6 pt-12">
+            <div className="flex items-center justify-between mb-10">
+              <div>
+                <h1 className="text-4xl font-black text-slate-800 tracking-tighter italic leading-none">Nossa Agenda</h1>
+                <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.3em] mt-3">Comunhão e Crescimento</p>
+              </div>
+              {isAdmin && (
+                <button 
+                  onClick={() => { setActiveView('admin'); setAdminActiveTab('agenda'); setShowAgendaForm(true); }}
+                  className="w-14 h-14 bg-indigo-600 text-white rounded-[22px] flex items-center justify-center shadow-xl shadow-indigo-200 hover:scale-105 transition-all"
+                >
+                  <Plus className="w-7 h-7" />
+                </button>
+              )}
             </div>
             
-            <div className="px-4 space-y-6">
-              <div className="relative pl-8 border-l-2 border-slate-100 space-y-10">
-                {agendaItems && (agendaItems as any[]).length > 0 ? (
-                  (agendaItems as any[]).map((e, idx) => (
-                    <div key={idx} className="relative group">
-                      <div className={`absolute -left-[41px] w-5 h-5 rounded-full border-4 border-background shadow-sm mt-1 flex items-center justify-center ${e.isFeatured ? 'bg-primary' : 'bg-slate-200'}`} />
-                      <p className="text-[10px] font-black text-primary uppercase tracking-[0.2em] mb-2">{e.time}</p>
-                      <div className={`p-6 rounded-[32px] transition-all hover:shadow-card relative ${e.isFeatured ? 'bg-white border-2 border-primary/10 shadow-xl shadow-primary/5' : 'bg-white border border-slate-100 shadow-sm'}`}>
-                        {isAdmin && (
-                          <div className="absolute top-4 right-4 flex items-center space-x-1">
-                            <button 
-                               onClick={() => setEditingAgendaItem(e)}
-                               className="p-2 text-slate-300 hover:text-primary transition-colors hover:bg-primary/5 rounded-lg"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                            <button 
-                               onClick={() => handleDeleteItem('agenda', e.id)}
-                               className="p-2 text-slate-300 hover:text-red-500 transition-colors hover:bg-red-50 rounded-lg"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        )}
-                        <span className={`text-[9px] font-black uppercase tracking-widest ${e.type === 'Educação' ? 'text-indigo-600 bg-indigo-50' : e.type === 'Exclusivo' ? 'text-orange-600 bg-orange-50' : 'text-primary bg-primary-light'} px-3 py-1 rounded-full`}>{e.type || 'Evento'}</span>
-                        <h4 className="text-xl font-bold mt-3 leading-tight text-slate-800">{e.title}</h4>
-                        <div className="flex items-center text-xs font-medium text-slate-400 mt-2">
-                          <MapPin className="w-3.5 h-3.5 mr-1.5 opacity-60" />
-                          <span>{e.location || e.description}</span>
+            <div className="flex flex-nowrap overflow-x-auto pb-6 scrollbar-hide mb-10 -mx-6 px-6">
+              {[...Array(7)].map((_, i) => {
+                const day = new Date();
+                day.setDate(day.getDate() + i);
+                const isToday = i === 0;
+                return (
+                  <div key={i} className={`inline-flex flex-col items-center justify-center min-w-[72px] h-[100px] rounded-[32px] mr-4 transition-all duration-500 shadow-sm ${isToday ? 'bg-indigo-600 text-white shadow-2xl shadow-indigo-200 scale-110' : 'bg-white/40 backdrop-blur-md border border-white/40 text-slate-400'}`}>
+                    <span className={`text-[10px] uppercase font-black mb-2 tracking-widest ${isToday ? 'text-white/60' : 'text-slate-300'}`}>{['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'][day.getDay()]}</span>
+                    <span className="text-2xl font-black">{day.getDate()}</span>
+                  </div>
+                );
+              })}
+            </div>
+            
+            <div className="space-y-10 relative">
+              <div className="absolute left-10 top-0 bottom-0 w-0.5 bg-slate-200/50" />
+              
+              {agendaItems && (agendaItems as any[]).length > 0 ? (
+                (agendaItems as any[]).map((e, idx) => (
+                  <motion.div 
+                    key={idx} 
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    whileInView={{ opacity: 1, scale: 1 }}
+                    viewport={{ once: true }}
+                    className="relative pl-24 group"
+                  >
+                    <div className={`absolute left-[31px] top-6 w-5 h-5 rounded-full border-4 border-background shadow-xl z-10 transition-all group-hover:scale-125 ${e.isFeatured ? 'bg-indigo-600 animate-pulse' : 'bg-slate-300'}`} />
+                    
+                    <div 
+                      onClick={() => setSelectedAgendaItem(e)}
+                      className={`p-10 rounded-[48px] transition-all hover:shadow-2xl relative cursor-pointer group/card border backdrop-blur-xl ${e.isFeatured ? 'bg-white/80 border-indigo-200 shadow-2xl shadow-indigo-100/50' : 'bg-white/40 border-white/40'}`}
+                    >
+                      {isAdmin && (
+                        <div className="absolute top-8 right-8 flex items-center space-x-2">
+                          <button onClick={(ev) => { ev.stopPropagation(); setEditingAgendaItem(e); }} className="p-3 bg-white/60 rounded-2xl hover:bg-indigo-50 transition-all shadow-sm">
+                            <Pencil className="w-4 h-4 text-slate-400 hover:text-indigo-600" />
+                          </button>
+                          <button onClick={(ev) => { ev.stopPropagation(); handleDeleteItem('agenda', e.id); }} className="p-3 bg-white/60 rounded-2xl hover:bg-red-50 transition-all shadow-sm">
+                            <Trash2 className="w-4 h-4 text-slate-400 hover:text-red-600" />
+                          </button>
                         </div>
+                      )}
+                      
+                      <div className="flex items-center space-x-3 mb-6">
+                         <span className={`text-[10px] font-black uppercase tracking-[0.2em] px-4 py-1.5 rounded-full ${e.type === 'Educação' ? 'text-indigo-600 bg-indigo-50/50' : 'text-primary bg-primary-light/50'}`}>
+                           {e.type || 'Evento'}
+                         </span>
+                         <div className="h-px flex-1 bg-slate-100" />
+                         <span className="text-[10px] font-black text-slate-400 tracking-widest">{e.time}</span>
+                      </div>
+                      
+                      <h4 className="text-2xl font-black text-slate-800 leading-tight mb-4 italic tracking-tight">{e.title}</h4>
+                      
+                      <div className="flex items-center text-xs font-bold text-slate-400">
+                        <MapPin className="w-4 h-4 mr-2" />
+                        <span>{e.location || e.description}</span>
                       </div>
                     </div>
-                  ))
-                ) : (
-                  <div className="py-20 text-center opacity-30">
-                    <Calendar className="w-12 h-12 mx-auto mb-4" />
-                    <p className="text-xs font-black uppercase tracking-widest">Nenhum evento agendado</p>
-                  </div>
-                )}
-              </div>
+                  </motion.div>
+                ))
+              ) : (
+                <div className="py-32 text-center bg-white/20 backdrop-blur-sm rounded-[48px] border border-dashed border-white/40 mx-4">
+                  <Calendar className="w-16 h-16 mx-auto mb-6 text-slate-200" />
+                  <p className="text-sm font-black uppercase tracking-[0.3em] text-slate-300 italic">Agenda em Atualização</p>
+                </div>
+              )}
             </div>
           </motion.div>
         );
@@ -2448,16 +3899,56 @@ export default function App() {
             <AnimatePresence>
               {showPrayerForm && (
                 <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="mb-8 overflow-hidden">
-                  <form onSubmit={handleCreatePrayer} className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-card space-y-4">
-                    <textarea 
-                      required
-                      placeholder="Qual o seu pedido de oração?"
-                      className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-medium outline-none focus:ring-2 focus:ring-primary/10 min-h-[120px]"
-                      value={newPrayer.content}
-                      onChange={e => setNewPrayer({ content: e.target.value })}
-                    />
-                    <button type="submit" className="w-full py-4 bg-primary text-white text-[10px] font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-primary/20">Publicar Pedido</button>
-                  </form>
+                  {!user ? (
+                    <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-card text-center space-y-4">
+                      <LogIn className="w-10 h-10 text-primary mx-auto opacity-20" />
+                      <p className="text-sm font-bold text-slate-600">Você precisa estar logado para publicar</p>
+                      <button 
+                        onClick={handleGoogleLogin}
+                        className="px-8 py-3 bg-primary text-white text-[10px] font-black uppercase tracking-widest rounded-xl"
+                      >
+                        Fazer Login
+                      </button>
+                    </div>
+                  ) : (
+                    <form onSubmit={handleCreatePrayer} className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-card space-y-6">
+                      <textarea 
+                        required
+                        placeholder="Qual o seu pedido de oração?"
+                        className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-medium outline-none focus:ring-2 focus:ring-primary/10 min-h-[120px]"
+                        value={newPrayer.content}
+                        onChange={e => setNewPrayer({ ...newPrayer, content: e.target.value })}
+                      />
+                      
+                      <div className="flex items-center space-x-3 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                        <input 
+                          type="checkbox"
+                          id="isAnonymous"
+                          className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary"
+                          checked={newPrayer.isAnonymous}
+                          onChange={e => setNewPrayer({ ...newPrayer, isAnonymous: e.target.checked })}
+                        />
+                        <label htmlFor="isAnonymous" className="text-xs font-bold text-slate-500 uppercase tracking-widest cursor-pointer">
+                          Ocultar minha identidade (Anônimo)
+                        </label>
+                      </div>
+
+                      <button 
+                        type="submit" 
+                        disabled={isSubmittingPrayer}
+                        className={`w-full py-4 ${isSubmittingPrayer ? 'bg-slate-200' : 'bg-primary shadow-lg shadow-primary/20'} text-white text-[10px] font-black uppercase tracking-widest rounded-2xl transition-all flex items-center justify-center space-x-2`}
+                      >
+                        {isSubmittingPrayer ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            <span>Publicando...</span>
+                          </>
+                        ) : (
+                          <span>Publicar Pedido</span>
+                        )}
+                      </button>
+                    </form>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>
@@ -2467,12 +3958,14 @@ export default function App() {
                 <motion.div key={prayer.id} layout className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm group relative">
                   <div className="flex items-center justify-between mb-6">
                     <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-primary font-black text-xs">
-                        {prayer.authorName?.charAt(0)}
+                      <div className={`w-10 h-10 ${prayer.isAnonymous ? 'bg-slate-100 text-slate-400' : 'bg-primary/10 text-primary'} rounded-xl flex items-center justify-center font-black text-xs`}>
+                        {prayer.isAnonymous ? <UserX className="w-5 h-5" /> : (prayer.authorName?.charAt(0) || 'I')}
                       </div>
                       <div>
-                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-900">{prayer.authorName}</p>
-                        <p className="text-[9px] text-slate-400 font-bold">{prayer.createdAt?.toDate().toLocaleDateString()}</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-900">
+                          {prayer.isAnonymous ? 'Irmão Anônimo' : prayer.authorName}
+                        </p>
+                        <p className="text-[9px] text-slate-400 font-bold">{prayer.createdAt?.toDate().toLocaleDateString('pt-BR')}</p>
                       </div>
                     </div>
                     {(isAdmin || prayer.authorId === user?.uid) && (
@@ -2554,7 +4047,7 @@ export default function App() {
                 </p>
                 <button 
                   onClick={() => setActiveView('home')}
-                  className="w-full py-5 bg-slate-900 text-white rounded-3xl text-sm font-black uppercase tracking-widest shadow-xl shadow-slate-900/20 active:scale-95 transition-all"
+                  className="w-full py-5 bg-primary text-white rounded-3xl text-sm font-black uppercase tracking-widest shadow-xl shadow-primary/20 active:scale-95 transition-all"
                 >
                   Voltar ao Início
                 </button>
@@ -2568,7 +4061,7 @@ export default function App() {
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="min-h-[60vh] flex flex-col items-center justify-center px-4">
               <div className="bg-white p-12 rounded-[56px] shadow-2xl border border-slate-100 w-full max-w-md text-center relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-full h-2 bg-primary" />
-                <div className="w-20 h-20 bg-slate-900 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-xl">
+                <div className="w-20 h-20 bg-primary/10 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-xl">
                   {isAdminSetupMode ? <UserPlus className="w-10 h-10 text-primary" /> : <Shield className="w-10 h-10 text-primary" />}
                 </div>
                 <h2 className="text-3xl font-black text-slate-900 mb-2 italic">
@@ -2600,7 +4093,7 @@ export default function App() {
                   </div>
                   <button 
                     type="submit"
-                    className="w-full py-5 bg-slate-900 text-white rounded-3xl text-sm font-black uppercase tracking-[0.2em] shadow-2xl shadow-slate-900/30 active:scale-[0.98] transition-all hover:bg-primary"
+                    className="w-full py-5 bg-primary text-white rounded-3xl text-sm font-black uppercase tracking-[0.2em] shadow-2xl shadow-primary/30 active:scale-[0.98] transition-all hover:bg-slate-800"
                   >
                     {isAdminSetupMode ? 'Cadastrar e Entrar' : 'Entrar no Painel'}
                   </button>
@@ -2628,6 +4121,13 @@ export default function App() {
               <h1 className="text-4xl font-black text-slate-900 tracking-tighter italic">Painel de Liderança</h1>
               <div className="flex space-x-2">
                 <button 
+                  onClick={() => setIsAdminUnlocked(false)}
+                  className="p-3 bg-primary text-white rounded-2xl shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all flex items-center space-x-2"
+                  title="Bloquear Painel"
+                >
+                  <Shield className="w-5 h-5" />
+                </button>
+                <button 
                   onClick={handleDownloadMembersReport}
                   className="p-3 bg-white border border-slate-100 rounded-2xl shadow-sm text-slate-600 hover:text-primary transition-all flex items-center space-x-2"
                   title="Baixar Relatório de Membros"
@@ -2643,10 +4143,44 @@ export default function App() {
                   <BarChart3 className="w-5 h-5" />
                   <span className="text-[10px] font-black pointer-events-none">CSV</span>
                 </button>
+                <button 
+                  onClick={handleResetApp}
+                  disabled={isResetting}
+                  className="p-3 bg-red-50 border border-red-100 rounded-2xl shadow-sm text-red-600 hover:bg-red-500 hover:text-white transition-all flex items-center space-x-2"
+                  title="Reset de Dados - CUIDADO"
+                >
+                  <Trash2 className="w-5 h-5" />
+                </button>
               </div>
             </div>
             
-             <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-12">
+            <div className="flex items-center space-x-2 overflow-x-auto pb-4 mb-8 scrollbar-hide no-wrap">
+              {[
+                { id: 'overview', label: 'Resumo', icon: TrendingUp },
+                { id: 'members', label: 'Membros', icon: Users },
+                { id: 'bulletins', label: 'Boletins', icon: FileText },
+                { id: 'agenda', label: 'Agenda', icon: Calendar },
+                { id: 'announcements', label: 'Mural', icon: Bell },
+                { id: 'scales', label: 'Escalas', icon: Zap },
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setAdminActiveTab(tab.id as any)}
+                  className={`px-6 py-3 rounded-2xl flex items-center space-x-2 text-[10px] font-black uppercase tracking-widest transition-all shrink-0 ${
+                    adminActiveTab === tab.id 
+                    ? 'bg-slate-900 text-white shadow-lg' 
+                    : 'bg-white border border-slate-100 text-slate-400 hover:bg-slate-50'
+                  }`}
+                >
+                  <tab.icon className="w-3.5 h-3.5" />
+                  <span>{tab.label}</span>
+                </button>
+              ))}
+            </div>
+
+            {adminActiveTab === 'overview' && (
+              <>
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-12">
                <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm">
                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Membros</p>
                  <h4 className="text-2xl font-black text-slate-900">{members.length}</h4>
@@ -2682,7 +4216,10 @@ export default function App() {
               </button>
               
               <button 
-                onClick={() => setShowMemberForm(true)}
+                onClick={() => {
+                  setAdminActiveTab('members');
+                  setShowMemberForm(true);
+                }}
                 className="p-8 bg-white border border-slate-100 rounded-[40px] text-left hover:shadow-card transition-all group"
               >
                 <div className="w-12 h-12 bg-orange-50 rounded-2xl flex items-center justify-center mb-4 group-hover:bg-primary transition-all">
@@ -2716,74 +4253,76 @@ export default function App() {
 
               <button 
                 onClick={() => setShowBulletinForm(!showBulletinForm)}
-                className="p-8 bg-slate-900 border border-slate-900 rounded-[40px] text-left hover:shadow-2xl hover:shadow-primary/20 transition-all group overflow-hidden relative"
+                className="p-8 bg-primary border border-primary rounded-[40px] text-left hover:shadow-2xl hover:shadow-primary/20 transition-all group overflow-hidden relative"
               >
                 <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
                   <Zap className="w-16 h-16 text-white" />
                 </div>
-                <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center mb-4 group-hover:bg-primary transition-all">
-                  <FileText className="w-6 h-6 text-white" />
+                <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center mb-4 group-hover:bg-white transition-all">
+                  <FileText className={`w-6 h-6 text-white`} />
                 </div>
                 <h4 className="text-xl font-bold text-white leading-tight">Boletim Digital</h4>
-                <p className="text-[10px] text-white/40 font-bold uppercase tracking-widest mt-1">Gerador via IA</p>
+                <p className="text-[10px] text-white/60 font-bold uppercase tracking-widest mt-1">Gerador via IA</p>
               </button>
             </div>
 
             <AnimatePresence>
               {showBulletinForm && (
                 <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="mb-12">
-                   <form onSubmit={handleGenerateBulletin} className="bg-slate-900 p-8 rounded-[40px] border border-slate-800 shadow-2xl space-y-4 text-white">
+                   <form onSubmit={handleGenerateBulletin} className="bg-card p-8 rounded-[40px] border border-slate-100 shadow-2xl space-y-4 text-slate-800">
                       <div className="flex items-center justify-between mb-2">
                         <div>
-                          <h3 className="text-xl font-bold">Gerador de Boletim IA</h3>
-                          <p className="text-xs text-slate-400 mt-1">Preencha os dados do culto para gerar o boletim</p>
+                          <h3 className="text-xl font-black italic tracking-tighter">Gerador de Boletim IA</h3>
+                          <p className="text-xs text-slate-400 mt-1 font-bold">Preencha os dados do culto para gerar o boletim</p>
                         </div>
-                        <Zap className="w-6 h-6 text-yellow-400 animate-pulse" />
+                        <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
+                          <Zap className="w-6 h-6 text-primary animate-pulse" />
+                        </div>
                       </div>
                       
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Tema do Culto</label>
-                          <input required type="text" className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-xs font-bold focus:ring-2 focus:ring-primary outline-none" value={bulletinInputs.tema} onChange={e => setBulletinInputs({...bulletinInputs, tema: e.target.value})} placeholder="Ex: O Poder da Oração" />
+                          <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Tema do Culto</label>
+                          <input required type="text" className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs font-bold focus:ring-2 focus:ring-primary outline-none" value={bulletinInputs.tema} onChange={e => setBulletinInputs({...bulletinInputs, tema: e.target.value})} placeholder="Ex: O Poder da Oração" />
                         </div>
                         <div>
-                          <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Pregador</label>
-                          <input required type="text" className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-xs font-bold focus:ring-2 focus:ring-primary outline-none" value={bulletinInputs.pregador} onChange={e => setBulletinInputs({...bulletinInputs, pregador: e.target.value})} placeholder="Ex: Pr. Gilmar Brito" />
+                          <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Pregador</label>
+                          <input required type="text" className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs font-bold focus:ring-2 focus:ring-primary outline-none" value={bulletinInputs.pregador} onChange={e => setBulletinInputs({...bulletinInputs, pregador: e.target.value})} placeholder="Ex: Pr. Gilmar Brito" />
                         </div>
                       </div>
 
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Texto Bíblico Base</label>
-                          <input required type="text" className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-xs font-bold focus:ring-2 focus:ring-primary outline-none" value={bulletinInputs.texto_biblico} onChange={e => setBulletinInputs({...bulletinInputs, texto_biblico: e.target.value})} placeholder="Ex: Filipenses 4:6-7" />
+                          <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Texto Bíblico Base</label>
+                          <input required type="text" className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs font-bold focus:ring-2 focus:ring-primary outline-none" value={bulletinInputs.texto_biblico} onChange={e => setBulletinInputs({...bulletinInputs, texto_biblico: e.target.value})} placeholder="Ex: Filipenses 4:6-7" />
                         </div>
                         <div>
-                          <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Data</label>
-                          <input required type="text" className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-xs font-bold focus:ring-2 focus:ring-primary outline-none" value={bulletinInputs.data} onChange={e => setBulletinInputs({...bulletinInputs, data: e.target.value})} />
+                          <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Data</label>
+                          <input required type="text" className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs font-bold focus:ring-2 focus:ring-primary outline-none" value={bulletinInputs.data} onChange={e => setBulletinInputs({...bulletinInputs, data: e.target.value})} />
                         </div>
                       </div>
 
                       <div>
-                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Resumo ou Transcrição da Pregação</label>
-                        <textarea required className="w-full bg-slate-800 border border-slate-700 rounded-xl p-4 text-xs font-bold min-h-[150px] focus:ring-2 focus:ring-primary outline-none" value={bulletinInputs.pregacao_texto} onChange={e => setBulletinInputs({...bulletinInputs, pregacao_texto: e.target.value})} placeholder="Cole aqui as notas ou a transcrição da mensagem..." />
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Resumo ou Transcrição da Pregação</label>
+                        <textarea required className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 text-xs font-bold min-h-[150px] focus:ring-2 focus:ring-primary outline-none" value={bulletinInputs.pregacao_texto} onChange={e => setBulletinInputs({...bulletinInputs, pregacao_texto: e.target.value})} placeholder="Cole aqui as notas ou a transcrição da mensagem..." />
                       </div>
 
                       <button 
+                        type="submit"
                         disabled={isGeneratingBulletin}
-                        type="submit" 
-                        className="w-full py-5 bg-primary text-white text-[12px] font-black uppercase tracking-widest rounded-3xl shadow-xl shadow-primary/30 flex items-center justify-center space-x-3 disabled:opacity-50"
+                        className="w-full py-5 bg-primary text-white rounded-3xl text-sm font-black uppercase tracking-[0.2em] shadow-xl shadow-primary/20 active:scale-95 transition-all flex items-center justify-center space-x-3"
                       >
-                        {isGeneratingBulletin ? (
-                          <>
-                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                            <span>Gerando Boletim...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Zap className="w-4 h-4 text-yellow-400" />
-                            <span>Gerar Boletim Digital</span>
-                          </>
-                        )}
+                         {isGeneratingBulletin ? (
+                           <>
+                             <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                             <span>Processando pela IA...</span>
+                           </>
+                         ) : (
+                           <>
+                             <Zap className="w-5 h-5" />
+                             <span>Gerar Boletim Digital</span>
+                           </>
+                         )}
                       </button>
                    </form>
                 </motion.div>
@@ -2803,6 +4342,24 @@ export default function App() {
                     <div>
                       <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Conteúdo do Aviso</label>
                       <textarea required className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs font-bold min-h-[100px]" value={newAnnouncement.content} onChange={e => setNewAnnouncement({...newAnnouncement, content: e.target.value})} />
+                    </div>
+                    <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                      <div className="flex items-center space-x-3">
+                         <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${newAnnouncement.isPinned ? 'bg-amber-500' : 'bg-slate-200'}`}>
+                            <Pin className={`w-4 h-4 ${newAnnouncement.isPinned ? 'text-white' : 'text-slate-500'}`} />
+                         </div>
+                         <div>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-900">Destacar Aviso</p>
+                            <p className="text-[9px] text-slate-400 font-bold">Fixar no topo e adicionar indicador visual</p>
+                         </div>
+                      </div>
+                      <button 
+                        type="button"
+                        onClick={() => setNewAnnouncement({...newAnnouncement, isPinned: !newAnnouncement.isPinned})}
+                        className={`w-12 h-6 rounded-full relative transition-colors ${newAnnouncement.isPinned ? 'bg-primary' : 'bg-slate-300'}`}
+                      >
+                         <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${newAnnouncement.isPinned ? 'left-7' : 'left-1'}`} />
+                      </button>
                     </div>
                     <button type="submit" className="w-full py-4 bg-primary text-white text-[10px] font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-primary/20">Publicar Agora</button>
                   </form>
@@ -2875,6 +4432,33 @@ export default function App() {
                 </motion.div>
               )}
             </AnimatePresence>
+
+            <SectionHeader title="Boletins Digitais" />
+            <div className="bg-white rounded-[40px] border border-slate-100 divide-y divide-slate-50 overflow-hidden mb-12 shadow-sm">
+              {bulletins.length > 0 ? (
+                bulletins.map((b: any) => (
+                  <div key={b.id} className="p-6 flex items-center justify-between hover:bg-slate-50 transition-all group">
+                    <div className="flex items-center space-x-4 cursor-pointer flex-1" onClick={() => setSelectedBulletin(b)}>
+                      <div className="w-12 h-12 bg-slate-900 rounded-2xl flex items-center justify-center shrink-0">
+                        <FileText className="w-6 h-6 text-primary" />
+                      </div>
+                      <div className="overflow-hidden">
+                        <h4 className="text-sm font-black text-slate-900 truncate italic">{b.theme}</h4>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{b.preacher} • {b.date}</p>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => handleDeleteItem('bulletins', b.id)}
+                      className="p-2 text-slate-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <p className="p-12 text-center text-xs font-bold text-slate-300 uppercase tracking-widest italic opacity-40">Nenhum boletim gerado ainda</p>
+              )}
+            </div>
 
             <SectionHeader title="Configurações da Igreja" />
             <div className="space-y-6 mb-12">
@@ -3092,7 +4676,7 @@ export default function App() {
                     />
                   </div>
                 </div>
-                <button type="submit" className="w-full py-4 bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest rounded-2xl shadow-lg hover:bg-primary transition-all mt-2">Gerar Nova Escala</button>
+                <button type="submit" className="w-full py-4 bg-primary text-white text-[10px] font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-primary/20 hover:bg-slate-800 transition-all mt-2">Gerar Nova Escala</button>
               </form>
             </div>
 
@@ -3152,6 +4736,405 @@ export default function App() {
                <p className="text-[9px] text-slate-300 mt-2 text-center uppercase tracking-widest">Deslize para atualizar o progresso da campanha</p>
             </div>
 
+              </>
+            )}
+
+            {adminActiveTab === 'members' && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-xl font-bold italic tracking-tight">Gestão de Membros</h3>
+                  <button 
+                    onClick={() => setShowMemberForm(!showMemberForm)}
+                    className="px-6 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-primary transition-all flex items-center space-x-2"
+                  >
+                    <UserPlus className="w-4 h-4" />
+                    <span>{showMemberForm ? 'Fechar Form' : 'Cadastrar Novo'}</span>
+                  </button>
+                </div>
+
+                <AnimatePresence>
+                  {showMemberForm && (
+                     <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="mb-8 overflow-hidden">
+                       <form onSubmit={handleCreateMember} className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-xl space-y-4">
+                        <div className="flex items-center justify-between mb-4">
+                          <h4 className="text-lg font-bold">Novo Membro</h4>
+                          <button type="button" onClick={() => setShowMemberForm(false)} className="p-2 text-slate-400 hover:text-slate-600 transition-colors"><X className="w-5 h-5" /></button>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="col-span-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Nome Completo</label>
+                            <input required type="text" className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs font-bold" value={newMember.name} onChange={e => setNewMember({...newMember, name: e.target.value})} />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Função / Cargo</label>
+                            <input required type="text" className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs font-bold" value={newMember.role} onChange={e => setNewMember({...newMember, role: e.target.value})} />
+                          </div>
+                          <div className="col-span-2 md:col-span-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1 text-xs">Ministério</label>
+                            <select className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs font-bold outline-none" value={newMember.ministry} onChange={e => setNewMember({...newMember, ministry: e.target.value})}>
+                               <option value="">Selecione...</option>
+                               {MINISTRIES.map(m => <option key={m} value={m}>{m}</option>)}
+                             </select>
+                          </div>
+                          <div className="col-span-2 mt-4 pt-4 border-t border-slate-50 flex items-center space-x-2">
+                            <div className="w-1 h-3 bg-primary rounded-full"></div>
+                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Informações de Contato</span>
+                          </div>
+                          <div className="col-span-2 md:col-span-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1 text-xs">Telefone</label>
+                            <input type="text" placeholder="(00) 00000-0000" className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs font-bold" value={newMember.phone} onChange={e => setNewMember({...newMember, phone: e.target.value})} />
+                          </div>
+                          <div className="col-span-2">
+                             <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1 text-xs">E-mail</label>
+                             <input type="email" placeholder="email@exemplo.com" className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs font-bold" value={newMember.email} onChange={e => setNewMember({...newMember, email: e.target.value})} />
+                          </div>
+                        </div>
+                        <button type="submit" className="w-full py-4 bg-primary text-white text-[10px] font-black uppercase tracking-widest rounded-2xl shadow-lg">Finalizar Cadastro</button>
+                       </form>
+                     </motion.div>
+                  )}
+                </AnimatePresence>
+                
+                <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm mb-8">
+                  <div className="relative">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input 
+                      type="text" 
+                      placeholder="Buscar por nome ou ministério..." 
+                      className="w-full bg-slate-50 border border-slate-100 rounded-2xl py-4 pl-12 pr-6 text-sm font-medium outline-none focus:ring-2 focus:ring-primary/10 transition-all"
+                      value={memberSearch}
+                      onChange={e => setMemberSearch(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {members.filter(m => m.name.toLowerCase().includes(memberSearch.toLowerCase()) || m.ministry.toLowerCase().includes(memberSearch.toLowerCase())).map(member => (
+                    <div key={member.id} className="p-4 bg-white rounded-2xl border border-slate-100 flex items-center justify-between group transition-all hover:border-primary/20 shadow-sm">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center overflow-hidden shrink-0">
+                          <img src={member.avatar || `https://picsum.photos/seed/${member.name}/100`} alt={member.name} referrerPolicy="no-referrer" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-black text-slate-800">{member.name}</h4>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{member.role} • {member.ministry}</p>
+                          {(member.phone || member.email) && (
+                            <p className="text-[9px] text-slate-300 mt-1 flex items-center space-x-2">
+                              {member.phone && <span>{member.phone}</span>}
+                              {member.phone && member.email && <span>•</span>}
+                              {member.email && <span className="truncate max-w-[120px]">{member.email}</span>}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <button 
+                          onClick={() => setEditingMember(member)}
+                          className="p-2 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-xl transition-all"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteItem('members', member.id)}
+                          className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {adminActiveTab === 'bulletins' && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-xl font-bold italic tracking-tight">Boletins Digitais IA</h3>
+                  <button 
+                    onClick={() => setShowBulletinForm(true)}
+                    className="px-6 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-primary transition-all flex items-center space-x-2"
+                  >
+                    <Zap className="w-4 h-4 text-yellow-400" />
+                    <span>Gerar via IA</span>
+                  </button>
+                </div>
+                
+                <div className="grid grid-cols-1 gap-4">
+                  {bulletins.map((b: any) => (
+                    <div key={b.id} className="bg-white p-6 rounded-[32px] border border-slate-100 flex items-center justify-between shadow-sm group">
+                      <div className="flex items-center space-x-4 cursor-pointer flex-1" onClick={() => setSelectedBulletin(b)}>
+                        <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center group-hover:bg-primary transition-all group-hover:text-white">
+                          <FileText className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-black text-slate-900 italic">{b.theme}</h4>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{b.date} • {b.preacher}</p>
+                        </div>
+                      </div>
+                      <button 
+                        onClick={() => handleDeleteItem('bulletins', b.id)}
+                        className="p-2 text-slate-300 hover:text-red-500 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                  {bulletins.length === 0 && (
+                    <div className="text-center py-20 bg-slate-50/50 rounded-[48px] border-2 border-dashed border-slate-100">
+                      <p className="text-sm font-bold text-slate-300 uppercase tracking-widest">Nenhum boletim histórico</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {adminActiveTab === 'agenda' && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-xl font-bold italic tracking-tight">Agenda da Igreja</h3>
+                  <button 
+                    onClick={() => setShowAgendaForm(true)}
+                    className="px-6 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-primary transition-all flex items-center space-x-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Novo Evento</span>
+                  </button>
+                </div>
+                
+                <div className="space-y-3">
+                  {(agendaItems as any[])?.map((event: any) => (
+                    <div key={event.id} className="p-6 bg-white rounded-[32px] border border-slate-100 flex items-center justify-between shadow-sm">
+                      <div className="flex items-center space-x-4">
+                        <div className="w-12 h-12 bg-primary/5 rounded-2xl flex items-center justify-center text-primary font-black text-xs uppercase">
+                          {new Date(event.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-black text-slate-800">{event.title}</h4>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{event.time} • {event.description || 'Sede Local'}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <button onClick={() => setEditingAgendaItem(event)} className="p-2 text-slate-400 hover:text-primary transition-all"><Pencil className="w-4 h-4" /></button>
+                        <button onClick={() => handleDeleteItem('agenda', event.id)} className="p-2 text-slate-400 hover:text-red-500 transition-all"><Trash2 className="w-4 h-4" /></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+        {adminActiveTab === 'announcements' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold italic tracking-tight">Mural de Avisos</h3>
+              <button 
+                onClick={() => setShowAnnouncementForm(true)}
+                className="px-6 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-primary transition-all flex items-center space-x-2"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Novo Aviso</span>
+              </button>
+            </div>
+
+            <AnimatePresence>
+              {showAnnouncementForm && (
+                 <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="mb-8 overflow-hidden">
+                   <form onSubmit={handleCreateAnnouncement} className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-xl space-y-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <h4 className="text-lg font-bold">Novo Aviso no Mural</h4>
+                      <button type="button" onClick={() => setShowAnnouncementForm(false)} className="p-2 text-slate-400 hover:text-slate-600 transition-colors"><X className="w-5 h-5" /></button>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Título do Aviso</label>
+                      <input required type="text" className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs font-bold" value={newAnnouncement.title} onChange={e => setNewAnnouncement({...newAnnouncement, title: e.target.value})} />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Conteúdo</label>
+                      <textarea required className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs font-bold min-h-[100px]" value={newAnnouncement.content} onChange={e => setNewAnnouncement({...newAnnouncement, content: e.target.value})} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                       <div>
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Categoria (Tag)</label>
+                        <select className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs font-bold outline-none" value={newAnnouncement.tag} onChange={e => setNewAnnouncement({...newAnnouncement, tag: e.target.value})}>
+                           <option value="Aviso">Aviso</option>
+                           <option value="Evento">Evento</option>
+                           <option value="Oração">Oração</option>
+                           <option value="Urgente">Urgente</option>
+                         </select>
+                       </div>
+                       <div className="flex items-center space-x-2 pt-6">
+                          <input type="checkbox" id="pinned" className="w-4 h-4 text-primary" checked={newAnnouncement.isPinned} onChange={e => setNewAnnouncement({...newAnnouncement, isPinned: e.target.checked})} />
+                          <label htmlFor="pinned" className="text-[10px] font-black uppercase tracking-widest text-slate-400">Fixar no topo</label>
+                       </div>
+                    </div>
+                    <button type="submit" className="w-full py-4 bg-primary text-white text-[10px] font-black uppercase tracking-widest rounded-2xl shadow-lg">Publicar Aviso</button>
+                   </form>
+                 </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div className="space-y-4">
+              {(announcements as any[])?.map((ann: any) => (
+                <div key={ann.id} className="p-6 bg-white rounded-[32px] border border-slate-100 flex items-center justify-between shadow-sm group">
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-2 mb-1">
+                      <span className="text-[9px] font-black uppercase tracking-widest bg-primary/5 text-primary px-2 py-0.5 rounded-full">{ann.tag}</span>
+                      {ann.isPinned && <Pin className="w-3 h-3 text-amber-500 fill-amber-500" />}
+                    </div>
+                    <h4 className="text-sm font-black text-slate-800 italic">{ann.title}</h4>
+                    <p className="text-xs text-slate-400 mt-1 line-clamp-1">{ann.content}</p>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <button onClick={() => setEditingAnnouncement(ann)} className="p-2 text-slate-400 hover:text-primary transition-all"><Pencil className="w-4 h-4" /></button>
+                    <button onClick={() => handleDeleteItem('announcements', ann.id)} className="p-2 text-slate-400 hover:text-red-500 transition-all"><Trash2 className="w-4 h-4" /></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {adminActiveTab === 'scales' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-xl font-bold italic tracking-tight text-slate-900">Escalas & Voluntariado</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Gestão de Equipes e Serviços</p>
+              </div>
+              <div className="flex items-center space-x-2">
+                <button 
+                  onClick={handleAutoGenerateScale}
+                  className="px-6 py-2 bg-primary text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all flex items-center space-x-2"
+                >
+                  <Zap className="w-4 h-4 text-yellow-400" />
+                  <span className="hidden md:inline">Auto-Gerar</span>
+                </button>
+                <button 
+                  onClick={() => setShowScaleForm(!showScaleForm)}
+                  className="px-6 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-primary transition-all flex items-center space-x-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span className="hidden md:inline">Novo Recrutamento</span>
+                </button>
+              </div>
+            </div>
+
+            <AnimatePresence>
+              {showScaleForm && (
+                 <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="mb-8 overflow-hidden">
+                   <form onSubmit={handleCreateScale} className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-xl space-y-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h4 className="text-lg font-bold">Escalar Voluntário</h4>
+                        <p className="text-xs text-slate-400">Atribua um membro a uma função específica</p>
+                      </div>
+                      <button type="button" onClick={() => setShowScaleForm(false)} className="p-2 text-slate-400 hover:text-slate-600 transition-colors"><X className="w-5 h-5" /></button>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Ministério</label>
+                        <select 
+                          className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs font-bold outline-none" 
+                          value={newScale.ministry} 
+                          onChange={e => setNewScale({...newScale, ministry: e.target.value, memberId: '', memberName: ''})}
+                        >
+                           {MINISTRIES.map(m => <option key={m} value={m}>{m}</option>)}
+                         </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Função / Instrumento</label>
+                        <input required type="text" placeholder="Ex: Guitarra, Recepcionista..." className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs font-bold" value={newScale.role} onChange={e => setNewScale({...newScale, role: e.target.value})} />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Data do Serviço</label>
+                        <input required type="text" placeholder="Ex: 12/05 - Manhã" className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs font-bold" value={newScale.date} onChange={e => setNewScale({...newScale, date: e.target.value})} />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Voluntário</label>
+                        <select 
+                          required
+                          className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs font-bold outline-none" 
+                          value={newScale.memberId} 
+                          onChange={e => {
+                            const m = members.find(mem => mem.id === e.target.value);
+                            if (m) setNewScale({...newScale, memberId: m.id, memberName: m.name, memberAvatar: m.avatar});
+                          }}
+                        >
+                           <option value="">Selecione um membro...</option>
+                           {members.sort((a, b) => a.name.localeCompare(b.name)).map(m => (
+                             <option key={m.id} value={m.id}>
+                               {m.name} {m.ministry ? `(${m.ministry})` : ''}
+                             </option>
+                           ))}
+                         </select>
+                      </div>
+                    </div>
+                    <button type="submit" className="w-full py-4 bg-primary text-white text-[10px] font-black uppercase tracking-widest rounded-2xl shadow-lg">Finalizar Escala</button>
+                   </form>
+                 </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div className="space-y-3">
+              {allScales.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)).map(scale => (
+                <div key={scale.id} className={`p-5 bg-white rounded-3xl border ${scale.status === 'needs_replacement' ? 'border-amber-200 bg-amber-50/20' : 'border-slate-100'} flex items-center justify-between group hover:border-primary/20 transition-all shadow-sm`}>
+                  <div className="flex items-center space-x-4">
+                    <div className="w-12 h-12 rounded-2xl overflow-hidden ring-1 ring-slate-100 bg-slate-50 flex-shrink-0">
+                       <img src={scale.memberAvatar || `https://picsum.photos/seed/${scale.memberId}/100`} alt={scale.memberName} referrerPolicy="no-referrer" />
+                    </div>
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <h4 className="text-sm font-black text-slate-800">{scale.memberName}</h4>
+                        <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${
+                          scale.status === 'confirmed' ? 'bg-green-50 text-green-600' :
+                          scale.status === 'declined' ? 'bg-red-50 text-red-600' :
+                          scale.status === 'needs_replacement' ? 'bg-amber-100 text-amber-700 animate-pulse' :
+                          'bg-slate-50 text-slate-400'
+                        }`}>
+                          {scale.status === 'confirmed' ? 'Confirmado' :
+                           scale.status === 'declined' ? 'Recusado' :
+                           scale.status === 'needs_replacement' ? 'Precisa Troca' : 'Pendente'}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest line-clamp-1">{scale.ministry} • {scale.role}</p>
+                      <p className="text-[10px] text-primary font-black mt-1">{scale.date}</p>
+                      {scale.notes && <p className="text-[9px] text-amber-600 italic mt-1 bg-amber-50 px-2 py-1 rounded-lg">Obs: {scale.notes}</p>}
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    {scale.status === 'needs_replacement' && (
+                      <div className="flex space-x-1">
+                        <select 
+                          className="text-[9px] font-black uppercase bg-amber-50 border border-amber-100 rounded-lg py-2 px-2 outline-none focus:ring-2 focus:ring-amber-200"
+                          onChange={(e) => {
+                            const m = members.find(mem => mem.id === e.target.value);
+                            if (m) handleAssignReplacement(scale.id, m);
+                          }}
+                        >
+                           <option value="">Trocar por...</option>
+                           {members.filter(m => m.ministry === scale.ministry && m.id !== scale.memberId).map(m => (
+                             <option key={m.id} value={m.id}>{m.name}</option>
+                           ))}
+                        </select>
+                      </div>
+                    )}
+                    <button onClick={() => setEditingScale(scale)} className="p-2 text-slate-300 hover:text-primary transition-all"><Pencil className="w-4 h-4" /></button>
+                    <button onClick={() => handleDeleteItem('scales', scale.id)} className="p-2 text-slate-300 hover:text-red-500 transition-all"><Trash2 className="w-4 h-4" /></button>
+                  </div>
+                </div>
+              ))}
+              {allScales.length === 0 && (
+                <div className="text-center py-16 opacity-30">
+                   <Zap className="w-12 h-12 mx-auto mb-4" />
+                   <p className="text-[11px] font-black uppercase tracking-[0.2em]">Nenhuma escala ativa</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+            <div className="mt-12 h-px bg-slate-100" />
             <SectionHeader title="Log de Atividades Recentes" />
             <div className="bg-white rounded-[40px] border border-slate-100 overflow-hidden divide-y divide-slate-50 shadow-sm">
               {activityLogs && activityLogs.length > 0 ? (
@@ -3218,6 +5201,17 @@ export default function App() {
                         />
                       </div>
                       <div>
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Categoria</label>
+                        <select 
+                          className="w-full bg-slate-50 border border-slate-100 rounded-xl py-3 px-4 text-xs font-bold outline-none focus:ring-2 focus:ring-primary/10"
+                          value={newDevotional.category}
+                          onChange={e => setNewDevotional({...newDevotional, category: e.target.value})}
+                        >
+                          <option value="devocionais">Devocionais</option>
+                          <option value="semeando">Semeando</option>
+                        </select>
+                      </div>
+                      <div>
                         <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Link do Vídeo (YouTube/Vimeo)</label>
                         <input 
                           required
@@ -3253,19 +5247,17 @@ export default function App() {
               {devotionals && (devotionals as any).length > 0 ? (
                 (devotionals as any).map((dev: any) => (
                   <div key={dev.id} className="bg-white rounded-[48px] overflow-hidden border border-slate-100 shadow-sm hover:shadow-card transition-all group">
-                    <div className="aspect-video bg-slate-900 relative">
+                    <div className="aspect-video bg-slate-900 relative cursor-pointer" onClick={() => setActiveVideo(dev)}>
+                       <img 
+                         src={dev.thumbnailUrl || `https://img.youtube.com/vi/${dev.videoId}/maxresdefault.jpg`} 
+                         alt={dev.title} 
+                         className="w-full h-full object-cover opacity-60 group-hover:opacity-80 transition-opacity" 
+                         referrerPolicy="no-referrer"
+                       />
                        <div className="absolute inset-0 flex items-center justify-center">
-                         <Video className="w-16 h-16 text-white opacity-20" />
-                       </div>
-                       <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-8">
-                         <a 
-                           href={dev.videoUrl} 
-                           target="_blank" 
-                           rel="noopener noreferrer"
-                           className="bg-white/20 backdrop-blur-md text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-white hover:text-black transition-all"
-                         >
-                           Assistir Agora
-                         </a>
+                         <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-2xl transform group-hover:scale-110 transition-transform">
+                            <Play className="w-8 h-8 text-primary fill-primary ml-1" />
+                         </div>
                        </div>
                     </div>
                     <div className="p-8">
@@ -3297,7 +5289,11 @@ export default function App() {
                     )}
                        </div>
                        <h3 className="text-2xl font-black text-slate-800 leading-tight mb-3 group-hover:text-primary transition-colors">{dev.title}</h3>
-                       <p className="text-sm text-slate-400 font-medium leading-relaxed">{dev.description}</p>
+                       <p className="text-sm text-slate-400 font-medium leading-relaxed mb-6">{dev.description}</p>
+                       
+                       <div className="border-t border-slate-50 pt-6">
+                         <CommentSection contentId={dev.id} user={user} isAdmin={isAdmin} userRole={userRole} />
+                       </div>
                     </div>
                   </div>
                 ))
@@ -3486,14 +5482,40 @@ export default function App() {
                         </div>
                         <div>
                           <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Ministério</label>
-                          <input 
-                            required
-                            type="text" 
-                            placeholder="Ex: Louvor" 
+                          <select 
                             className="w-full bg-slate-50 border border-slate-100 rounded-xl py-3 px-4 text-xs font-bold outline-none focus:ring-2 focus:ring-primary/10"
                             value={newMember.ministry}
                             onChange={e => setNewMember({...newMember, ministry: e.target.value})}
-                          />
+                          >
+                            <option value="">Selecione...</option>
+                            {MINISTRIES.map(m => <option key={m} value={m}>{m}</option>)}
+                          </select>
+                        </div>
+                        <div className="flex items-center space-x-2 py-4 border-y border-slate-50">
+                           <div className="w-1 h-4 bg-primary rounded-full"></div>
+                           <h5 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Informações de Contato</h5>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Telefone</label>
+                            <input 
+                              type="text" 
+                              placeholder="(00) 00000-0000" 
+                              className="w-full bg-slate-50 border border-slate-100 rounded-xl py-3 px-4 text-xs font-bold outline-none focus:ring-2 focus:ring-primary/10"
+                              value={newMember.phone}
+                              onChange={e => setNewMember({...newMember, phone: e.target.value})}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">E-mail</label>
+                            <input 
+                              type="email" 
+                              placeholder="email@exemplo.com" 
+                              className="w-full bg-slate-50 border border-slate-100 rounded-xl py-3 px-4 text-xs font-bold outline-none focus:ring-2 focus:ring-primary/10"
+                              value={newMember.email}
+                              onChange={e => setNewMember({...newMember, email: e.target.value})}
+                            />
+                          </div>
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-4 items-end">
@@ -3557,7 +5579,7 @@ export default function App() {
             </div>
 
             <div className="flex items-center space-x-2 mb-8 overflow-x-auto scrollbar-hide py-1">
-              {['Todos', 'Louvor', 'Mídia', 'Recepção', 'Crianças', 'Apoio'].map((m) => (
+              {['Todos', ...MINISTRIES].map((m) => (
                 <button 
                   key={m}
                   onClick={() => setMinistryFilter(m)}
@@ -3585,6 +5607,20 @@ export default function App() {
                           <span className="w-1 h-1 bg-slate-200 rounded-full" />
                           <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">{member.role}</span>
                         </div>
+                        {isAdmin && (member.phone || member.email) && (
+                          <div className="flex items-center space-x-3 mt-1.5 opacity-60">
+                            {member.phone && (
+                              <div className="flex items-center space-x-1">
+                                <span className="text-[8px] font-bold">{member.phone}</span>
+                              </div>
+                            )}
+                            {member.email && (
+                              <div className="flex items-center space-x-1">
+                                <span className="text-[8px] font-bold truncate max-w-[100px]">{member.email}</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
@@ -3647,10 +5683,10 @@ export default function App() {
               <button onClick={() => setActiveView('financial')} className="p-2 bg-white border border-slate-100 rounded-xl">
                 <ChevronRight className="w-5 h-5 rotate-180" />
               </button>
-              <h1 className="text-3xl font-black text-slate-900">Missões</h1>
+              <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Missões</h1>
             </div>
 
-            <div className="bg-primary p-8 rounded-[40px] text-white shadow-2xl relative overflow-hidden mb-12">
+            <div className="bg-primary p-8 rounded-[20px] text-white shadow-sm relative overflow-hidden mb-8">
                <div className="relative z-10">
                  <div className="flex justify-between items-start mb-6">
                    <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center">
@@ -3670,12 +5706,12 @@ export default function App() {
                      )}
                    </div>
                  </div>
-                 <p className="text-[10px] uppercase font-bold tracking-[0.3em] opacity-70 mb-2">Alvo Geral da Igreja</p>
+                 <p className="text-[9px] uppercase font-bold tracking-[0.2em] opacity-80 mb-2">Alvo Geral da Igreja</p>
                  <div className="flex items-baseline space-x-2 mb-6">
-                   <h2 className="text-5xl font-black">R$ {totalCollected.toLocaleString()}</h2>
-                   <span className="text-sm font-bold opacity-60">/ R$ {currentCampaign.totalGoal.toLocaleString()}</span>
+                   <h2 className="text-4xl font-bold tracking-tight">R$ {totalCollected.toLocaleString()}</h2>
+                   <span className="text-xs font-bold opacity-60">/ R$ {currentCampaign.totalGoal.toLocaleString()}</span>
                  </div>
-                 <div className="w-full h-4 bg-white/20 rounded-full mb-2">
+                 <div className="w-full h-2.5 bg-white/20 rounded-full mb-2">
                    <motion.div 
                     initial={{ width: 0 }}
                     animate={{ width: `${percent}%` }}
@@ -3750,22 +5786,77 @@ export default function App() {
               >
                 <ChevronRight className="w-5 h-5 rotate-180" />
               </button>
-              <h1 className="text-5xl font-black text-primary tracking-tighter italic">Explorar</h1>
+              <h1 className="text-3xl font-black text-primary tracking-tight">Explorar</h1>
+            </div>
+
+            <div className="mb-12">
+              <div className="bg-white border border-slate-100 rounded-[48px] p-10 shadow-xl shadow-slate-200/50 overflow-hidden relative group">
+                <div className="absolute top-0 right-0 w-48 h-48 bg-primary/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl" />
+                <div className="relative z-10">
+                  <div className="flex items-center justify-between mb-10">
+                    <div className="flex items-center space-x-5">
+                      <div className="w-16 h-16 bg-primary-light rounded-[28px] flex items-center justify-center shadow-sm">
+                        <Zap className="w-8 h-8 text-primary animate-pulse" />
+                      </div>
+                      <div>
+                        <h3 className="text-3xl font-black text-slate-900 tracking-tighter italic">Dízimos & Missões</h3>
+                        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 mt-1">Contribuição Instantânea</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-10 bg-slate-50/50 p-10 rounded-[40px] border border-slate-100/50 backdrop-blur-sm">
+                    <div className="space-y-6">
+                      <div>
+                         <div className="flex items-center justify-between mb-4">
+                           <span className="text-[10px] font-black uppercase tracking-[0.4em] text-primary">Chave Pix Oficial</span>
+                           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.5)]" />
+                         </div>
+                         <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between group/key">
+                           <p className="text-base font-mono text-slate-800 select-all font-bold tracking-tight break-all">
+                             {pixKey}
+                           </p>
+                           <button onClick={handleCopyPix} className="p-3 bg-slate-50 rounded-xl hover:bg-primary hover:text-white transition-all ml-4 shrink-0">
+                             <Copy className="w-5 h-5" />
+                           </button>
+                         </div>
+                      </div>
+                      <button 
+                        onClick={handleCopyPix}
+                        className="w-full bg-primary text-white py-6 rounded-3xl text-[11px] font-black uppercase tracking-[0.2em] shadow-2xl shadow-primary/20 active:scale-95 transition-all hover:bg-slate-800 flex items-center justify-center space-x-3"
+                      >
+                        <Wallet className="w-5 h-5" />
+                        <span>Copiar Pix</span>
+                      </button>
+                    </div>
+                    <div className="space-y-6 text-center">
+                      <div className="bg-white p-6 rounded-[32px] border-2 border-dashed border-slate-100 flex flex-col items-center justify-center text-center shadow-lg shadow-slate-100/50 group/qr relative group transition-all hover:border-primary/20">
+                       <div className="w-32 h-32 bg-slate-50 rounded-3xl mb-4 flex items-center justify-center relative overflow-hidden ring-8 ring-slate-50/50">
+                          <QrCode className="w-16 h-16 text-slate-900 opacity-80" />
+                       </div>
+                       <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 leading-relaxed px-4">Aponte sua câmera para o <br/> QR Code e doe agora</p>
+                    </div>
+                  </div>
+                </div>
+                </div>
+              </div>
             </div>
             
             <div className="space-y-3">
               {[
+                { icon: Music, label: 'Notícias da Fé', info: 'Feed cristão atualizado', view: 'news' },
                 { icon: Users, label: 'Lista de Membros', info: 'Busque e filtre contatos', view: 'members' },
+                { icon: MessageSquare, label: 'Aconselhamento Cristão', info: 'Assistência Bíblica com IA', view: 'ai-chat' },
                 { icon: Video, label: 'Vídeos Devocionais', info: 'Semeando a palavra', view: 'devotionals' },
                 { icon: Heart, label: 'Mural de Oração', info: 'Interceda por seus irmãos', view: 'prayers' },
                 { icon: Heart, label: 'Dashboard de Missões', info: 'Alvos mundiais e estaduais', view: 'missions' },
                 { icon: Video, label: 'Pregações & Lives', info: 'Assista aos últimos cultos', view: 'lives' },
                 { icon: UserPlus, label: 'Integrar Convidados', info: 'Novos visitantes', view: 'guests' },
                 { icon: FileText, label: 'Cursos & trilhas', info: 'Crescimento cristão', view: 'courses' },
-                { icon: MapPin, label: 'Nossas Sedes', info: 'Encontre uma igreja próxima', view: 'locations' },
-                { icon: Settings, label: 'Painel Admin', info: 'Exclusivo para líderes', view: 'admin' },
+                { icon: MapPin, label: 'Encontrar Igreja/Grupo', info: 'Encontre sedes e pequenos grupos', view: 'locations' },
+                (userRole === 'admin' || userRole === 'lider') ? { icon: Settings, label: 'Painel do Líder', info: 'Gestão ministerial', view: 'admin' } : null,
                 { icon: UserPlus, label: 'Configurações', info: 'Perfil e notificações', view: 'profile' }
-              ].map((item, idx) => (
+              ].filter(Boolean).map((item: any, idx) => (
                 <button 
                   key={idx} 
                   onClick={() => item.view && setActiveView(item.view as View)}
@@ -3795,6 +5886,216 @@ export default function App() {
             </div>
             
             <p className="text-center mt-12 text-[10px] text-slate-400 font-bold uppercase tracking-widest">Igreja Conectada v1.0.5</p>
+          </motion.div>
+        );
+
+      case 'news':
+        return (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="pb-24 max-w-2xl mx-auto px-4 pt-12">
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center space-x-4">
+                <button onClick={() => setActiveView('home')} className="p-2 bg-white border border-slate-100 rounded-xl">
+                  <ChevronRight className="w-5 h-5 rotate-180" />
+                </button>
+                <h1 className="text-3xl font-black text-slate-900 tracking-tight italic">Notícias</h1>
+              </div>
+              <button 
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleFetchNews();
+                }}
+                className="p-3 bg-white border border-slate-100 rounded-xl text-primary hover:bg-primary hover:text-white transition-all shadow-sm focus:outline-none"
+                disabled={isFetchingNews}
+              >
+                <Activity className={`w-5 h-5 ${isFetchingNews ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              {newsCacheSnap?.docs.map(doc => {
+                const item = { id: doc.id, ...doc.data() } as NewsItem;
+                return (
+                  <motion.div 
+                    key={item.id}
+                    whileHover={{ y: -4 }}
+                    className="bg-white rounded-[32px] overflow-hidden border border-slate-100 shadow-xl shadow-slate-200/40 group cursor-pointer"
+                    onClick={() => window.open(item.link, '_blank')}
+                  >
+                    <div className="relative h-48 overflow-hidden">
+                      <img src={item.image} alt={item.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" referrerPolicy="no-referrer" />
+                      <div className="absolute top-4 left-4">
+                         <span className="bg-primary text-white text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full shadow-lg">
+                           {item.source}
+                         </span>
+                      </div>
+                    </div>
+                    <div className="p-6">
+                      <div className="flex items-center space-x-2 text-slate-400 mb-2">
+                        <Clock className="w-3.5 h-3.5" />
+                        <span className="text-[10px] font-bold uppercase tracking-widest">
+                          {new Date(item.pubDate).toLocaleDateString('pt-BR')}
+                        </span>
+                      </div>
+                      <h3 className="text-xl font-bold text-slate-900 leading-tight mb-3 group-hover:text-primary transition-colors">
+                        {item.title}
+                      </h3>
+                      <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">
+                        {item.description}
+                      </p>
+                      <div className="mt-4 flex items-center text-primary text-[10px] font-black uppercase tracking-widest space-x-2">
+                        <span>Ler Notícia Completa</span>
+                        <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
+              {newsCacheSnap?.empty && !isFetchingNews && (
+                <div className="text-center py-20 bg-white rounded-[40px] border border-dashed border-slate-200">
+                  <Activity className="w-12 h-12 text-slate-200 mx-auto mb-4" />
+                  <p className="text-sm font-bold text-slate-400 italic">Nenhum conteúdo no momento</p>
+                  <button 
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleFetchNews();
+                    }} className="mt-4 text-primary text-xs font-black uppercase tracking-widest focus:outline-none">Atualizar Agora</button>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        );
+
+      case 'fake-news':
+        return (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="pb-24 max-w-2xl mx-auto px-4 pt-12">
+            <div className="flex items-center space-x-4 mb-8">
+              <button onClick={() => setActiveView('home')} className="p-2 bg-white border border-slate-100 rounded-xl">
+                <ChevronRight className="w-5 h-5 rotate-180" />
+              </button>
+              <h1 className="text-3xl font-black text-slate-900 tracking-tight italic">Detector de Fake News</h1>
+            </div>
+
+            <div className="space-y-6">
+              <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-8 rounded-[40px] text-white shadow-2xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-8 opacity-10">
+                  <ShieldCheck className="w-32 h-32" />
+                </div>
+                <div className="relative z-10">
+                  <h3 className="text-2xl font-black italic tracking-tighter mb-4">Verificação com IA Bíblica</h3>
+                  <p className="text-sm text-slate-300 font-medium leading-relaxed mb-6">
+                    A desinformação pode prejudicar o corpo de Cristo. Use nossa IA para analisar notícias, áudios ou afirmações sob a ótica dos fatos e da sabedoria cristã.
+                  </p>
+                  
+                  <form onSubmit={handleAnalyzeFakeNews} className="space-y-4">
+                    <textarea 
+                      value={fakeNewsInput}
+                      onChange={(e) => setFakeNewsInput(e.target.value)}
+                      placeholder="Cole aqui o título da notícia ou o texto que deseja verificar..."
+                      className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-3xl p-6 text-sm font-medium text-white placeholder:text-white/30 min-h-[150px] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                    />
+                    <button 
+                      type="submit"
+                      disabled={isAnalyzingFakeNews || !fakeNewsInput.trim()}
+                      className="w-full py-5 bg-indigo-600 text-white rounded-3xl text-[11px] font-black uppercase tracking-widest shadow-xl shadow-indigo-600/30 flex items-center justify-center space-x-3 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-indigo-500 transition-all active:scale-95"
+                    >
+                      {isAnalyzingFakeNews ? (
+                        <>
+                          <Activity className="w-5 h-5 animate-spin" />
+                          <span>Analisando Veracidade...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Search className="w-5 h-5" />
+                          <span>Verificar Agora</span>
+                        </>
+                      )}
+                    </button>
+                  </form>
+                </div>
+              </div>
+
+              <AnimatePresence>
+                {fakeNewsAnalysis && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 20 }} 
+                    animate={{ opacity: 1, y: 0 }}
+                    className="space-y-6"
+                  >
+                    <div className="bg-white rounded-[40px] border border-slate-100 p-8 shadow-xl relative overflow-hidden">
+                      <div className="flex items-center space-x-4 mb-6">
+                        <div className={`p-4 rounded-2xl ${
+                          fakeNewsAnalysis.verdict === 'true' ? 'bg-green-100 text-green-600' :
+                          fakeNewsAnalysis.verdict === 'false' ? 'bg-red-100 text-red-600' :
+                          'bg-orange-100 text-orange-600'
+                        }`}>
+                          {fakeNewsAnalysis.verdict === 'true' ? <CheckCircle2 className="w-8 h-8" /> : 
+                           fakeNewsAnalysis.verdict === 'false' ? <X className="w-8 h-8" /> : 
+                           <Activity className="w-8 h-8" />}
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Veredito da Análise</p>
+                          <h4 className={`text-2xl font-black italic tracking-tighter ${
+                            fakeNewsAnalysis.verdict === 'true' ? 'text-green-600' :
+                            fakeNewsAnalysis.verdict === 'false' ? 'text-red-600' :
+                            'text-orange-600'
+                          }`}>
+                            {fakeNewsAnalysis.verdict === 'true' ? 'Informação Verídica' :
+                             fakeNewsAnalysis.verdict === 'false' ? 'Fake News Detectada' :
+                             fakeNewsAnalysis.verdict === 'misleading' ? 'Informação Enganosa' :
+                             'Inconclusivo'}
+                          </h4>
+                        </div>
+                      </div>
+
+                      <div className="space-y-6">
+                        <div>
+                          <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Explicação Detalhada</h5>
+                          <p className="text-sm text-slate-700 font-medium leading-relaxed bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                            {fakeNewsAnalysis.explanation}
+                          </p>
+                        </div>
+
+                        <div>
+                          <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Perspectiva Bíblica</h5>
+                          <div className="bg-indigo-50 p-6 rounded-3xl border border-indigo-100 relative group">
+                            <BookOpen className="absolute top-4 right-4 w-5 h-5 text-indigo-200 group-hover:text-indigo-400 transition-colors" />
+                            <p className="text-sm text-indigo-900 font-serif italic leading-relaxed pr-8">
+                              "{fakeNewsAnalysis.biblicalPerspective}"
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Confiança da IA</span>
+                          <div className="flex items-center space-x-3">
+                            <div className="w-32 h-2 bg-slate-200 rounded-full overflow-hidden">
+                              <div 
+                                className={`h-full transition-all duration-1000 ${
+                                  fakeNewsAnalysis.confidence > 70 ? 'bg-green-500' :
+                                  fakeNewsAnalysis.confidence > 40 ? 'bg-orange-500' : 'bg-red-500'
+                                }`}
+                                style={{ width: `${fakeNewsAnalysis.confidence}%` }}
+                              />
+                            </div>
+                            <span className="text-xs font-black text-slate-800">{fakeNewsAnalysis.confidence}%</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-primary/5 border border-primary/10 rounded-[32px] p-6 text-center">
+                       <p className="text-[10px] font-black uppercase tracking-widest text-primary italic">
+                         "Não aceitem notícias falsas nem se unam ao ímpio para serem testemunhas maldosas." — Êxodo 23:1
+                       </p>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </motion.div>
         );
 
@@ -3865,16 +6166,70 @@ export default function App() {
           { id: '4', title: 'Teologia Básica', duration: '15 Aulas', info: 'Entenda os fundamentos.', status: 'Inscrições Abertas' }
         ];
 
+        const recommendedOnes = displayCourses.filter((c: any) => recommendedCourseIds.includes(c.id));
+        const otherCourses = displayCourses.filter((c: any) => !recommendedCourseIds.includes(c.id));
+
         return (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="pb-24 max-w-2xl mx-auto px-4 pt-12">
-            <div className="flex items-center space-x-4 mb-8">
-              <button onClick={() => setActiveView('more')} className="p-2 bg-white border border-slate-100 rounded-xl">
-                <ChevronRight className="w-5 h-5 rotate-180" />
-              </button>
-              <h1 className="text-3xl font-black text-slate-900">Cursos & Trilhas</h1>
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center space-x-4">
+                <button onClick={() => setActiveView('more')} className="p-2 bg-white border border-slate-100 rounded-xl">
+                  <ChevronRight className="w-5 h-5 rotate-180" />
+                </button>
+                <h1 className="text-3xl font-black text-slate-900">Cursos & Trilhas</h1>
+              </div>
+              {isRecommending && (
+                <div className="flex items-center space-x-2 bg-primary/5 px-4 py-2 rounded-2xl">
+                  <Zap className="w-4 h-4 text-primary animate-pulse" />
+                  <span className="text-[10px] font-black uppercase text-primary">IA Recomendando...</span>
+                </div>
+              )}
             </div>
+
+            {recommendedOnes.length > 0 && (
+              <div className="mb-12">
+                <div className="flex items-center space-x-2 mb-6">
+                  <Zap className="w-5 h-5 text-primary" />
+                  <h2 className="text-xl font-black text-slate-800 italic">Recomendados para você</h2>
+                </div>
+                <div className="grid grid-cols-1 gap-4">
+                  {recommendedOnes.map((c: any) => {
+                    const enrollment = myEnrollments.find((e: any) => e.courseId === c.id);
+                    return (
+                      <div key={c.id} className="p-8 bg-primary rounded-[40px] text-white shadow-xl shadow-primary/20 group relative">
+                        <div className="flex justify-between items-start">
+                          <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center mb-6">
+                            <Zap className="w-7 h-7 text-white" />
+                          </div>
+                          {enrollment && (
+                             <span className="bg-white/20 px-4 py-1 rounded-full text-[8px] font-black uppercase tracking-widest flex items-center">
+                               <CheckCircle2 className="w-3 h-3 mr-1" /> Inscrito
+                             </span>
+                          )}
+                        </div>
+                        <h4 className="text-2xl font-black leading-tight italic">{c.title}</h4>
+                        <p className="text-sm text-white/70 mt-2 font-medium">{c.info}</p>
+                        <button 
+                          onClick={() => handleEnrollCourse(c.id, c.title)}
+                          disabled={!!enrollment}
+                          className={`w-full mt-8 py-4 text-[9px] font-black uppercase tracking-widest rounded-2xl border transition-all active:scale-95 ${
+                            enrollment 
+                            ? 'bg-white/10 text-white/50 border-white/10 cursor-not-allowed'
+                            : 'bg-white text-primary border-white hover:bg-slate-50'
+                          }`}
+                        >
+                          {enrollment ? 'Inscrição Confirmada' : 'Fazer Inscrição'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <SectionHeader title="Todos os Cursos" />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {displayCourses.map((c: any) => {
+              {otherCourses.map((c: any) => {
                 const enrollment = myEnrollments.find((e: any) => e.courseId === c.id);
                 return (
                   <div key={c.id} className="p-8 bg-white rounded-[40px] border border-slate-100 shadow-sm hover:shadow-card hover:-translate-y-1 transition-all group">
@@ -3919,23 +6274,59 @@ export default function App() {
 
       case 'locations':
         return (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="pb-24 max-w-2xl mx-auto px-4 pt-12">
-             <div className="flex items-center space-x-4 mb-8">
-              <button onClick={() => setActiveView('more')} className="p-2 bg-white border border-slate-100 rounded-xl">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="pb-32 max-w-2xl mx-auto px-4 pt-12">
+             <div className="flex items-center space-x-4 mb-10">
+              <button onClick={() => setActiveView('home')} className="p-3 bg-white border border-slate-100 rounded-2xl shadow-sm">
                 <ChevronRight className="w-5 h-5 rotate-180" />
               </button>
-              <h1 className="text-3xl font-black text-slate-900">Nossas Sedes</h1>
+              <h1 className="text-3xl font-black text-slate-900 italic tracking-tighter">Encontrar</h1>
             </div>
-            <div className="space-y-4">
+
+            <SectionHeader title="Nossas Sedes" />
+            <div className="space-y-4 mb-12">
               {['Sede Central', 'Congregação Norte', 'Congregação Sul'].map((s, i) => (
-                <div key={i} className="p-8 bg-white rounded-[40px] border border-slate-100 shadow-sm flex items-start space-x-6">
-                  <div className="w-16 h-16 bg-slate-100 rounded-3xl flex items-center justify-center text-slate-400">
+                <div key={i} className="p-8 bg-white rounded-[40px] border border-slate-100 shadow-sm flex items-start space-x-6 hover:border-primary/20 transition-all group">
+                  <div className="w-16 h-16 bg-slate-50 rounded-3xl flex items-center justify-center text-slate-400 group-hover:bg-primary/10 group-hover:text-primary transition-colors">
                     <MapPin className="w-8 h-8" />
                   </div>
                   <div>
                     <h4 className="text-2xl font-black text-slate-800">{s}</h4>
-                    <p className="text-sm text-slate-500 mt-1">Rua Benjamin Constant, nº {100 + i*50}</p>
-                    <p className="text-[10px] text-primary font-black uppercase tracking-widest mt-4">Ver no Mapa</p>
+                    <p className="text-sm text-slate-500 mt-1 font-medium italic">Rua Benjamin Constant, nº {100 + i*50}</p>
+                    <button className="text-[10px] text-primary font-black uppercase tracking-widest mt-4 flex items-center group-hover:translate-x-1 transition-transform">
+                      Ver no Mapa
+                      <ChevronRight className="w-3 h-3 ml-1" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <SectionHeader title="Grupos Pequenos (Células)" />
+            <p className="text-xs text-slate-400 font-medium px-2 mb-6 italic">Encontre um grupo de comunhão perto de você para crescer na fé e compartilhar a vida.</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {[
+                { name: 'GP Esperança', leader: 'João & Maria', location: 'Centro', day: 'Quarta-feira, 19:30' },
+                { name: 'GP Vida', leader: 'Pedro Silva', location: 'Bairro Norte', day: 'Quinta-feira, 20:00' },
+                { name: 'GP Fé', leader: 'Lucas Santos', location: 'Vila Sul', day: 'Terça-feira, 19:00' },
+                { name: 'GP Shalom', leader: 'Ana Souza', location: 'Condomínio Leste', day: 'Sábado, 18:00' }
+              ].map((gp, i) => (
+                <div key={i} className="p-6 bg-white rounded-[40px] border border-slate-100 shadow-sm hover:shadow-lg transition-all group border-b-4 border-b-emerald-100">
+                  <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600 mb-4 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                    <Users className="w-6 h-6" />
+                  </div>
+                  <h4 className="text-lg font-black text-slate-800 italic">{gp.name}</h4>
+                  <div className="space-y-1 mt-2">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Líder: {gp.leader}</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">🕒 {gp.day}</p>
+                  </div>
+                  <div className="flex items-center justify-between mt-6">
+                    <div className="flex items-center space-x-2 text-[10px] font-black uppercase text-emerald-600 tracking-widest">
+                       <MapPin className="w-3 h-3" />
+                       <span>{gp.location}</span>
+                    </div>
+                    <button className="p-2 bg-emerald-50 text-emerald-600 rounded-xl group-hover:bg-emerald-600 group-hover:text-white transition-all">
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
               ))}
@@ -3944,98 +6335,199 @@ export default function App() {
         );
 
       case 'profile':
+        if (profileSubView === 'notifications') {
+          return (
+            <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="pb-32 max-w-2xl mx-auto px-6 pt-12">
+               <div className="flex items-center space-x-4 mb-8">
+                <button onClick={() => setProfileSubView('main')} className="p-2 bg-white border border-slate-100 rounded-xl shadow-sm">
+                  <ChevronLeft className="w-5 h-5 text-slate-800" />
+                </button>
+                <h1 className="text-3xl font-black text-slate-800 tracking-tighter italic">Notificações</h1>
+              </div>
+              <div className="bg-white rounded-[40px] border border-slate-100 shadow-xl overflow-hidden p-8 space-y-4">
+                 {['Avisos', 'Eventos', 'Escalas', 'Mensagens', 'Devocionais'].map(pref => (
+                   <button 
+                    key={pref}
+                    onClick={() => handleUpdateNotificationPrefs(pref)}
+                    className="w-full flex items-center justify-between p-5 bg-slate-50 border border-slate-100 rounded-[24px] group transition-all"
+                   >
+                     <div className="flex items-center space-x-4">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${userNotificationPrefs.includes(pref) ? 'bg-primary' : 'bg-slate-200'}`}>
+                           <Bell className={`w-5 h-5 ${userNotificationPrefs.includes(pref) ? 'text-white' : 'text-slate-500'}`} />
+                        </div>
+                        <span className="text-sm font-bold text-slate-700">{pref}</span>
+                     </div>
+                     <div className={`w-12 h-6 rounded-full relative transition-colors ${userNotificationPrefs.includes(pref) ? 'bg-primary' : 'bg-slate-200'}`}>
+                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${userNotificationPrefs.includes(pref) ? 'left-7' : 'left-1'}`} />
+                     </div>
+                   </button>
+                 ))}
+              </div>
+            </motion.div>
+          );
+        }
+
+        if (profileSubView === 'donations') {
+          const myDonations = financialData.filter((d: any) => d.userId === user?.uid);
+          return (
+            <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="pb-32 max-w-2xl mx-auto px-6 pt-12">
+               <div className="flex items-center space-x-4 mb-8">
+                <button onClick={() => setProfileSubView('main')} className="p-2 bg-white border border-slate-100 rounded-xl shadow-sm">
+                  <ChevronLeft className="w-5 h-5 text-slate-800" />
+                </button>
+                <h1 className="text-3xl font-black text-slate-800 tracking-tighter italic">Minhas Doações</h1>
+              </div>
+              <div className="space-y-4">
+                 {myDonations.length > 0 ? myDonations.map((d: any) => (
+                   <div key={d.id} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between group hover:border-primary/20 transition-all">
+                     <div className="flex items-center space-x-4">
+                        <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center group-hover:bg-primary/10 transition-colors">
+                           <Heart className="w-6 h-6 text-slate-400 group-hover:text-primary" />
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{d.type}</p>
+                          <p className="text-sm font-bold text-slate-800">{new Date(d.date?.seconds * 1000).toLocaleDateString('pt-BR')}</p>
+                        </div>
+                     </div>
+                     <p className="text-xl font-black text-slate-800 italic">R$ {d.amount?.toFixed(2)}</p>
+                   </div>
+                 )) : (
+                   <div className="p-20 text-center bg-white rounded-[48px] border-4 border-dashed border-slate-50 italic text-slate-300 uppercase tracking-widest text-[10px] font-black">
+                     Nenhuma doação registrada
+                   </div>
+                 )}
+              </div>
+            </motion.div>
+          );
+        }
+
+        if (profileSubView === 'personal') {
+          const userMember = members.find(m => m.email === user?.email);
+          const initialFormData = {
+            name: userMember?.name || user?.displayName || '',
+            phone: userMember?.phone || '',
+            email: userMember?.email || user?.email || '',
+            privacyMode: privacyMode
+          };
+
+          return (
+            <PersonalDataForm 
+              initialData={initialFormData} 
+              onSave={handleUpdatePersonalData} 
+              onBack={() => setProfileSubView('main')} 
+            />
+          );
+        }
+
+        if (profileSubView === 'theme') {
+          return (
+            <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="pb-32 max-w-2xl mx-auto px-6 pt-12 text-slate-800">
+               <div className="flex items-center space-x-4 mb-8">
+                <button onClick={() => setProfileSubView('main')} className="p-2 bg-white/60 backdrop-blur-md border border-white/20 rounded-xl shadow-sm leading-none">
+                  <ChevronLeft className="w-5 h-5 flex-shrink-0" />
+                </button>
+                <h1 className="text-3xl font-black tracking-tighter italic">Personalização</h1>
+              </div>
+
+              <div className="bg-white/40 backdrop-blur-xl rounded-[40px] border border-white/40 shadow-2xl overflow-hidden p-8 space-y-8">
+                  <div>
+                    <h3 className="text-sm font-black uppercase tracking-widest mb-6 border-l-4 border-indigo-600 pl-4">Intensidade do Fundo</h3>
+                    <div className="px-2">
+                       <input 
+                         type="range" 
+                         min="0" 
+                         max="100" 
+                         value={bgIntensity}
+                         onChange={(e) => setBgIntensity(parseInt(e.target.value))}
+                         className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                       />
+                       <div className="flex justify-between mt-4">
+                         <span className="text-[10px] font-black uppercase tracking-widest opacity-40 italic font-mono">Suave</span>
+                         <span className="text-xs font-black text-indigo-600 italic tracking-tighter font-mono">{bgIntensity}%</span>
+                         <span className="text-[10px] font-black uppercase tracking-widest opacity-40 italic font-mono">Vibrante</span>
+                       </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-8 border-t border-white/20">
+                    <h3 className="text-sm font-black uppercase tracking-widest mb-4 border-l-4 border-indigo-600 pl-4">Estilos Rápidos</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                       {[
+                         { label: 'Minimalista', val: 0 },
+                         { label: 'Padrão Profissional', val: 50 },
+                         { label: 'Vibrante Premium', val: 100 }
+                       ].map(preset => (
+                         <button 
+                           key={preset.val}
+                           onClick={() => setBgIntensity(preset.val)}
+                           className={`p-5 rounded-3xl border transition-all text-[10px] font-black uppercase tracking-widest ${bgIntensity === preset.val ? 'bg-indigo-600 text-white border-indigo-600 shadow-xl shadow-indigo-200' : 'bg-white/40 border-white/40 hover:bg-white/60'}`}
+                         >
+                           {preset.label}
+                         </button>
+                       ))}
+                    </div>
+                  </div>
+              </div>
+            </motion.div>
+          );
+        }
+
         return (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="pb-24 max-w-2xl mx-auto px-4 pt-12">
-            <div className="flex items-center space-x-4 mb-8">
-              <button onClick={() => setActiveView('more')} className="p-2 bg-white border border-slate-100 rounded-xl">
-                <ChevronRight className="w-5 h-5 rotate-180" />
-              </button>
-              <h1 className="text-3xl font-black text-slate-900">Configurações e Perfil</h1>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="pb-32 max-w-2xl mx-auto px-6 pt-12">
+            <div className="flex items-center justify-between mb-12">
+               <h1 className="text-3xl font-black text-slate-800 tracking-tighter italic">Meu Perfil</h1>
+               <button 
+                 onClick={() => setProfileSubView('theme')}
+                 className="p-3 bg-white border border-slate-100 rounded-2xl shadow-sm text-slate-400 hover:text-primary transition-colors"
+               >
+                 <Settings className="w-6 h-6" />
+               </button>
             </div>
             
-            <div className="bg-white p-8 rounded-[48px] border border-slate-100 shadow-xl mb-6 relative overflow-hidden">
-               <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl" />
-               <div className="flex flex-col items-center text-center relative z-10">
-                 <div className="w-24 h-24 rounded-[32px] overflow-hidden border-4 border-slate-50 shadow-xl mb-6 ring-1 ring-slate-100">
-                   <img src={user?.photoURL || "https://picsum.photos/seed/person/200"} alt="Avatar" referrerPolicy="no-referrer" />
+            <div className="flex flex-col items-center text-center mb-12">
+               <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-white shadow-2xl shadow-primary/20 mb-6 relative group">
+                 <img src={user?.photoURL || "https://picsum.photos/seed/person/200"} alt="Avatar" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                 <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                   <Pencil className="w-6 h-6 text-white" />
                  </div>
-                 <h2 className="text-3xl font-black text-slate-800 italic">{user?.displayName || 'Membro'}</h2>
-                 <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">{user?.email}</p>
-                 <div className="mt-4 flex items-center space-x-2">
-                   <span className="bg-primary/10 text-primary px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">
-                     {isAdmin ? 'Líder / Admin' : 'Membro Digital'}
-                   </span>
-                 </div>
+               </div>
+               <h2 className="text-2xl font-black text-slate-800 tracking-tight italic">{user?.displayName || 'Membro'}</h2>
+               <div className="flex items-center space-x-2 mt-2 text-slate-400">
+                 <MapPin className="w-3 h-3" />
+                 <span className="text-[10px] font-bold uppercase tracking-widest">Membro desde 2024 • Congregação Central</span>
                </div>
             </div>
 
             <div className="space-y-3">
               {[
-                { icon: Bell, label: 'Notificações', info: 'Gerenciar alertas push' },
-                { icon: Heart, label: 'Minhas Doações', info: 'Histórico financeiro' },
-                { icon: Users, label: 'Dados Cadastrais', info: 'Atualizar informações' },
-                { icon: Settings, label: 'Tema & Estilo', info: 'Personalizar visual' }
-              ].map((opt, idx) => (
-                <button key={idx} className="w-full flex items-center p-6 bg-white rounded-3xl border border-slate-100 group hover:border-primary/20 transition-all text-left">
-                  <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center mr-4 group-hover:bg-primary/10 transition-colors">
-                    <opt.icon className="w-5 h-5 text-slate-400 group-hover:text-primary" />
+                { icon: Users, label: 'Meus dados', subview: 'personal' },
+                { icon: Zap, label: 'Temas e Cores', subview: 'theme' },
+                { icon: Heart, label: 'Minhas doações', subview: 'donations' },
+                { icon: Bell, label: 'Notificações', subview: 'notifications' },
+                { icon: Shield, label: 'Privacidade', subview: 'personal' },
+              ].map((opt: any, idx) => (
+                <button 
+                  key={idx} 
+                  onClick={() => setProfileSubView(opt.subview)}
+                  className="w-full flex items-center p-6 bg-white border border-slate-100 rounded-[28px] group hover:border-primary/30 transition-all text-left shadow-sm hover:shadow-md"
+                >
+                  <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center mr-5 group-hover:bg-primary/10 transition-colors">
+                    <opt.icon className="w-6 h-6 text-slate-400 group-hover:text-primary" />
                   </div>
-                  <div className="flex-1">
-                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest line-clamp-1">{opt.info}</p>
-                    <h4 className="text-lg font-bold text-slate-800">{opt.label}</h4>
-                  </div>
-                  <ChevronRight className="w-5 h-5 text-slate-200" />
+                  <h4 className="flex-1 text-sm font-bold text-slate-700 tracking-tight">{opt.label}</h4>
+                  <ChevronRight className="w-5 h-5 text-slate-200 group-hover:translate-x-1 transition-all" />
                 </button>
               ))}
               
               <button 
                 onClick={handleSignOut}
-                className="w-full flex items-center p-6 bg-red-50 rounded-3xl border border-red-100 group hover:bg-red-500 transition-all text-left mt-6"
+                className="w-full flex items-center p-6 bg-white border border-red-50 rounded-[28px] group hover:bg-red-50 transition-all text-left mt-6"
               >
-                <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center mr-4 group-hover:bg-white/20 transition-colors">
-                  <LogOut className="w-5 h-5 text-red-600 group-hover:text-white" />
+                <div className="w-12 h-12 bg-red-50 rounded-2xl flex items-center justify-center mr-5">
+                  <LogOut className="w-6 h-6 text-red-500" />
                 </div>
-                <div className="flex-1">
-                  <p className="text-[10px] text-red-300 font-black uppercase tracking-widest group-hover:text-white/60">Encerrar Sessão</p>
-                  <h4 className="text-lg font-bold text-red-600 group-hover:text-white">Sair do Aplicativo</h4>
-                </div>
-              </button>
-            </div>
-          </motion.div>
-        );
-
-      case 'profile':
-        return (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="pb-24 max-w-2xl mx-auto px-4 pt-12">
-            <div className="flex items-center space-x-4 mb-8">
-              <button onClick={() => setActiveView('more')} className="p-2 bg-white border border-slate-100 rounded-xl">
-                <ChevronRight className="w-5 h-5 rotate-180" />
-              </button>
-              <h1 className="text-3xl font-black text-slate-900">Configurações</h1>
-            </div>
-            <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm text-center">
-              <div className="w-24 h-24 bg-primary/10 rounded-full mx-auto mb-6 flex items-center justify-center overflow-hidden">
-                <img src={user?.photoURL || "https://picsum.photos/seed/user/200"} alt="Avatar" referrerPolicy="no-referrer" />
-              </div>
-              <h3 className="text-2xl font-black text-slate-800">{user?.displayName}</h3>
-              <p className="text-sm text-slate-400 font-medium mb-8">{user?.email}</p>
-              
-              <div className="space-y-3">
-                <button className="w-full p-4 bg-slate-50 rounded-2xl text-left flex items-center justify-between">
-                  <span className="text-sm font-bold text-slate-700">Editar Perfil</span>
-                  <ChevronRight className="w-4 h-4 text-slate-400" />
-                </button>
-                <button className="w-full p-4 bg-slate-50 rounded-2xl text-left flex items-center justify-between">
-                  <span className="text-sm font-bold text-slate-700">Privacidade</span>
-                  <ChevronRight className="w-4 h-4 text-slate-400" />
-                </button>
-              </div>
-              
-              <button 
-                onClick={() => signOut(auth)}
-                className="mt-12 w-full py-4.5 bg-red-50 text-red-600 text-[10px] font-black uppercase tracking-widest rounded-3xl"
-              >
-                Sair da Conta
+                <h4 className="flex-1 text-sm font-bold text-red-500 tracking-tight">Sair</h4>
+                <ChevronRight className="w-5 h-5 text-red-200" />
               </button>
             </div>
           </motion.div>
@@ -4047,7 +6539,12 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-background relative selection:bg-primary selection:text-white lg:pl-80">
+    <div 
+      className="min-h-screen relative selection:bg-primary selection:text-white lg:pl-80 overflow-x-hidden"
+      style={getDynamicStyles()}
+    >
+      {/* Dynamic Overlay Gradient */}
+      <div className="fixed inset-0 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white/10 via-transparent to-transparent pointer-events-none" />
       {/* Scrollable View Area */}
       <div className="relative z-0">
         <AnimatePresence mode="wait">
@@ -4056,7 +6553,74 @@ export default function App() {
           </div>
         </AnimatePresence>
 
-        {/* Modais de Edição */}
+        {/* Transaction Form Modal */}
+        <AnimatePresence>
+          {showTransactionForm && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setShowTransactionForm(false)}
+                className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+              />
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                className="relative bg-white w-full max-w-md rounded-[48px] shadow-2xl p-10 overflow-hidden"
+              >
+                <div className="absolute top-0 left-0 w-full h-2 bg-primary" />
+                <div className="flex justify-between items-start mb-8">
+                  <div>
+                    <h3 className="text-2xl font-black text-slate-900 italic tracking-tighter">Registrar {transactionType}</h3>
+                    <p className="text-xs text-slate-400 font-medium">Sua contribuição fortalece a obra de Deus.</p>
+                  </div>
+                  <button onClick={() => setShowTransactionForm(false)} className="p-2 hover:bg-slate-50 rounded-xl transition-all">
+                    <X className="w-6 h-6 text-slate-300" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleCreateTransaction} className="space-y-6">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Valor (R$)</label>
+                    <div className="relative mt-2">
+                       <span className="absolute left-6 top-1/2 -translate-y-1/2 font-black text-slate-300">R$</span>
+                       <input 
+                         autoFocus
+                         required
+                         type="number"
+                         step="0.01"
+                         className="w-full bg-slate-50 border border-slate-100 rounded-3xl p-6 pl-14 text-2xl font-black text-slate-900 focus:ring-2 focus:ring-primary/20 outline-none"
+                         placeholder="0,00"
+                         value={transactionAmount}
+                         onChange={e => setTransactionAmount(e.target.value)}
+                       />
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                    <div className="flex items-center space-x-3 mb-4">
+                      <ShieldCheck className="w-5 h-5 text-emerald-500" />
+                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-900">Seguridade & Sigilo</span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 font-medium leading-relaxed">
+                      Todas as contribuições são processadas com criptografia. Atualmente operamos via **Pix Copia e Cola**. Confirme o valor após realizar a transferência.
+                    </p>
+                  </div>
+
+                  <button 
+                    type="submit"
+                    className="w-full py-6 bg-primary text-white rounded-3xl text-sm font-black uppercase tracking-widest shadow-2xl shadow-primary/30 hover:bg-slate-800 transition-all active:scale-95 flex items-center justify-center space-x-3"
+                  >
+                    <CheckCircle2 className="w-5 h-5" />
+                    <span>Confirmar Envio</span>
+                  </button>
+                </form>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
         <EditModal 
           title="Editar Membro" 
           isOpen={!!editingMember} 
@@ -4074,7 +6638,7 @@ export default function App() {
                   onChange={e => setEditingMember({...editingMember, name: e.target.value})} 
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Cargo</label>
                   <input 
@@ -4090,12 +6654,30 @@ export default function App() {
                   <select 
                     className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold" 
                     value={editingMember?.status || 'Ativo'} 
-                    onChange={e => setEditingMember({...editingMember, status: e.target.value})}
+                    onChange={e => setEditingMember({...editingMember, status: e.target.value as any})}
                   >
                     <option value="Ativo">Ativo</option>
                     <option value="Líder">Líder</option>
                     <option value="Visitante">Visitante</option>
                   </select>
+                </div>
+                <div>
+                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Telefone</label>
+                   <input 
+                     type="text" 
+                     className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold" 
+                     value={editingMember?.phone || ''} 
+                     onChange={e => setEditingMember({...editingMember, phone: e.target.value})} 
+                   />
+                </div>
+                <div>
+                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">E-mail</label>
+                   <input 
+                     type="email" 
+                     className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold" 
+                     value={editingMember?.email || ''} 
+                     onChange={e => setEditingMember({...editingMember, email: e.target.value})} 
+                   />
                 </div>
               </div>
             </div>
@@ -4129,6 +6711,24 @@ export default function App() {
                   value={editingAnnouncement?.content || ''} 
                   onChange={e => setEditingAnnouncement({...editingAnnouncement, content: e.target.value})} 
                 />
+              </div>
+              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                <div className="flex items-center space-x-3">
+                   <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${editingAnnouncement?.isPinned ? 'bg-amber-500' : 'bg-slate-200'}`}>
+                      <Pin className={`w-4 h-4 ${editingAnnouncement?.isPinned ? 'text-white' : 'text-slate-500'}`} />
+                   </div>
+                   <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-900">Destacar Aviso</p>
+                      <p className="text-[9px] text-slate-400 font-bold">Fixar no topo e adicionar indicador visual</p>
+                   </div>
+                </div>
+                <button 
+                  type="button"
+                  onClick={() => setEditingAnnouncement({...editingAnnouncement, isPinned: !editingAnnouncement.isPinned})}
+                  className={`w-12 h-6 rounded-full relative transition-colors ${editingAnnouncement?.isPinned ? 'bg-primary' : 'bg-slate-300'}`}
+                >
+                   <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${editingAnnouncement?.isPinned ? 'left-7' : 'left-1'}`} />
+                </button>
               </div>
             </div>
             <button type="submit" className="w-full py-4.5 bg-primary text-white text-[10px] font-black uppercase tracking-widest rounded-3xl shadow-xl shadow-primary/20">Salvar Alterações</button>
@@ -4192,14 +6792,19 @@ export default function App() {
               <h2 className="text-3xl font-black text-slate-900 mt-4 leading-tight">{viewingAnnouncement?.title}</h2>
               <p className="text-xs text-slate-400 font-medium mt-2">{viewingAnnouncement?.date}</p>
             </div>
-            <div className="bg-slate-50 p-6 rounded-[32px] border border-slate-100 italic text-slate-600 leading-relaxed">
+            <div className="bg-slate-50 p-6 rounded-[32px] border border-slate-100 italic text-slate-600 leading-relaxed mb-6">
               {viewingAnnouncement?.content || "Nenhum detalhe adicional informado."}
             </div>
+
+            <div className="border-t border-slate-100 pt-6">
+              <CommentSection contentId={viewingAnnouncement?.id} user={user} isAdmin={isAdmin} userRole={userRole} />
+            </div>
+
             <button 
               onClick={() => setViewingAnnouncement(null)}
-              className="w-full py-4.5 bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest rounded-3xl"
+              className="w-full mt-6 py-4.5 bg-primary text-white text-[10px] font-black uppercase tracking-widest rounded-3xl shadow-xl shadow-primary/20 active:scale-95 transition-all outline-none"
             >
-              Fechar
+              Entendido
             </button>
           </div>
         </EditModal>
@@ -4218,12 +6823,27 @@ export default function App() {
                   value={editingScale?.ministry || 'Louvor'} 
                   onChange={e => setEditingScale({...editingScale, ministry: e.target.value})}
                 >
-                  <option>Louvor</option>
-                  <option>Mídia</option>
-                  <option>Recepção</option>
-                  <option>Crianças</option>
-                  <option>Apoio</option>
+                  {MINISTRIES.map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
+              </div>
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Voluntário</label>
+                <select 
+                  required
+                  className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold" 
+                  value={editingScale?.memberId || ''} 
+                  onChange={e => {
+                    const m = members.find(mem => mem.id === e.target.value);
+                    if (m) setEditingScale({...editingScale, memberId: m.id, memberName: m.name, memberAvatar: m.avatar});
+                  }}
+                >
+                   <option value="">Selecione um membro...</option>
+                   {members.sort((a, b) => a.name.localeCompare(b.name)).map(m => (
+                     <option key={m.id} value={m.id}>
+                       {m.name} {m.ministry ? `(${m.ministry})` : ''}
+                     </option>
+                   ))}
+                 </select>
               </div>
               <div>
                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Função</label>
@@ -4542,57 +7162,139 @@ export default function App() {
           </div>
         </EditModal>
 
+        <EditModal 
+          title="Assistir Vídeo" 
+          isOpen={!!activeVideo} 
+          onClose={() => setActiveVideo(null)}
+        >
+          <div className="space-y-6">
+            <div className="aspect-video w-full rounded-[32px] overflow-hidden bg-slate-900 shadow-2xl">
+              <iframe 
+                width="100%" 
+                height="100%" 
+                src={`https://www.youtube.com/embed/${activeVideo?.videoId || extractYouTubeId(activeVideo?.videoUrl)}?autoplay=1`}
+                title={activeVideo?.title}
+                frameBorder="0" 
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                allowFullScreen
+              ></iframe>
+            </div>
+            <div className="px-2">
+              <h2 className="text-3xl font-black text-slate-900 leading-tight italic">{activeVideo?.title}</h2>
+              <p className="text-sm text-slate-500 font-medium mt-3 leading-relaxed mb-6">
+                {activeVideo?.description}
+              </p>
+              
+              <div className="border-t border-slate-100 pt-6">
+                <CommentSection contentId={activeVideo?.id} user={user} isAdmin={isAdmin} userRole={userRole} />
+              </div>
+            </div>
+            <button 
+              onClick={() => setActiveVideo(null)}
+              className="w-full mt-6 py-4.5 bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest rounded-3xl"
+            >
+              Fechar Vídeo
+            </button>
+          </div>
+        </EditModal>
+
+        <EditModal 
+          title="Evento / Culto" 
+          isOpen={!!selectedAgendaItem} 
+          onClose={() => setSelectedAgendaItem(null)}
+        >
+          <div className="space-y-6">
+              <div className="flex items-center space-x-3 mb-2">
+                <span className={`text-[10px] font-black uppercase tracking-widest ${selectedAgendaItem?.type === 'Educação' ? 'text-primary bg-primary/10' : selectedAgendaItem?.type === 'Exclusivo' ? 'text-accent bg-accent/10' : 'text-primary bg-primary/10'} px-3 py-1 rounded-full`}>
+                  {selectedAgendaItem?.type || 'Evento'}
+                </span>
+                <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">{selectedAgendaItem?.time}</span>
+              </div>
+            
+            <h2 className="text-3xl font-black text-slate-900 leading-tight italic">{selectedAgendaItem?.title}</h2>
+            
+            <div className="flex flex-col space-y-3">
+              <div className="flex items-center text-sm font-bold text-slate-600">
+                <Calendar className="w-5 h-5 mr-3 text-primary" />
+                <span>{selectedAgendaItem?.date} às {selectedAgendaItem?.time}</span>
+              </div>
+              <div className="flex items-center text-sm font-bold text-slate-600">
+                <MapPin className="w-5 h-5 mr-3 text-primary" />
+                <span>{selectedAgendaItem?.location || selectedAgendaItem?.description || 'Templo Sede'}</span>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 p-6 rounded-[32px] border border-slate-100 mb-6">
+              <p className="text-sm text-slate-600 leading-relaxed font-medium">
+                {selectedAgendaItem?.description || "Junte-se a nós para este momento especial de comunhão e adoração."}
+              </p>
+            </div>
+
+            <div className="border-t border-slate-100 pt-6">
+              <CommentSection contentId={selectedAgendaItem?.id} user={user} isAdmin={isAdmin} userRole={userRole} />
+            </div>
+
+            <button 
+              onClick={() => setSelectedAgendaItem(null)}
+              className="w-full mt-6 py-4.5 bg-primary text-white text-[10px] font-black uppercase tracking-widest rounded-3xl shadow-xl shadow-primary/20 active:scale-95 transition-all"
+            >
+              Confirmar Presença
+            </button>
+          </div>
+        </EditModal>
+
         <BulletinViewModal 
           bulletin={selectedBulletin} 
           onClose={() => setSelectedBulletin(null)} 
         />
       </div>
 
-      {/* Bottom Nav Bar - Hidden on desktop since sidebar is used */}
-      <div className={`fixed bottom-0 left-0 right-0 lg:hidden bg-white/80 backdrop-blur-xl border-t border-slate-100 px-6 py-4 flex items-center justify-between safe-bottom z-50 rounded-t-[32px] md:max-w-xl md:mx-auto md:mb-4 md:rounded-[32px] md:shadow-2xl transition-transform duration-500 ${(isInputFocused || editingCampaign || editingMember || editingAnnouncement || editingAgendaItem || editingScale || editingConstruction || editingDevotional || editingCourse || itemToDelete) ? 'translate-y-full opacity-0 pointer-events-none' : 'translate-y-0 opacity-100'}`}>
+      {/* Bottom Nav Bar - Updated Mockup Style */}
+      <div className={`fixed bottom-0 left-0 right-0 lg:hidden bg-white/95 backdrop-blur-xl border-t border-slate-100 px-6 py-3 flex items-center justify-between safe-bottom z-50 rounded-t-[32px] md:max-w-md md:mx-auto shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.05)] transition-all duration-500 ${(isInputFocused || editingCampaign || editingMember || editingAnnouncement || editingAgendaItem || editingScale || editingConstruction || editingDevotional || editingCourse || itemToDelete) ? 'translate-y-full opacity-0 pointer-events-none' : 'translate-y-0 opacity-100'}`}>
         <NavItem active={activeView === 'home'} icon={Home} label="Início" onClick={() => setActiveView('home')} />
-        <NavItem active={activeView === 'ministries'} icon={Users} label="Escalas" onClick={() => setActiveView('ministries')} />
-        <NavItem active={activeView === 'devotionals'} icon={Video} label="Devocionais" onClick={() => setActiveView('devotionals')} />
-        <NavItem active={activeView === 'chat'} icon={MessageCircle} label="Chat" onClick={() => setActiveView('chat')} />
-        <NavItem active={activeView === 'more'} icon={MoreHorizontal} label="Mais" onClick={() => setActiveView('more')} />
+        <NavItem active={activeView === 'devotionals'} icon={Video} label="Pregações" onClick={() => setActiveView('devotionals')} />
+        <NavItem active={activeView === 'agenda'} icon={CalendarDays} label="Agenda" onClick={() => setActiveView('agenda')} />
+        <NavItem active={activeView === 'donations'} icon={Heart} label="Doações" onClick={() => setActiveView('donations')} />
+        <NavItem active={activeView === 'profile' || activeView === 'admin'} icon={MoreHorizontal} label="Mais" onClick={() => setActiveView('profile')} />
       </div>
 
       {/* Header for Desktop or bigger screens */}
-      <div className="hidden lg:flex fixed top-0 left-0 bottom-0 w-80 bg-white border-r border-slate-100 flex-col p-10 z-50 shadow-sm">
-        <div className="mb-12 flex items-center space-x-6">
+      <div className="hidden lg:flex fixed top-0 left-0 bottom-0 w-72 bg-card border-r border-slate-100 flex-col p-8 z-50 shadow-sm">
+        <div className="mb-12 flex items-center space-x-4">
           <Logo size="sm" />
           <div>
-            <h1 className="text-3xl font-black tracking-tighter text-primary">Nova Aliança</h1>
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 mt-1">CONECTADA</p>
+            <h1 className="text-2xl font-bold tracking-tight text-primary">Igreja</h1>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-accent">CONECTADA</p>
           </div>
         </div>
         
-        <nav className="flex-1 space-y-3">
+        <nav className="flex-1 space-y-2">
           <SidebarItem active={activeView === 'home'} icon={Home} label="Dashboard" onClick={() => setActiveView('home')} />
-          {isAdmin && <SidebarItem active={activeView === 'admin'} icon={Settings} label="Painel Admin" onClick={() => setActiveView('admin')} />}
-          <SidebarItem active={activeView === 'members'} icon={Users} label="Membros" onClick={() => setActiveView('members')} />
-          <SidebarItem active={activeView === 'devotionals'} icon={Video} label="Devocionais" onClick={() => setActiveView('devotionals')} />
-          <SidebarItem active={activeView === 'prayers'} icon={Heart} label="Mural de Orações" onClick={() => setActiveView('prayers')} />
-          <SidebarItem active={activeView === 'chat'} icon={MessageCircle} label="Mensagens Líderes" onClick={() => setActiveView('chat')} />
-          <SidebarItem active={activeView === 'missions'} icon={Heart} label="Missões" onClick={() => setActiveView('missions')} />
-          <SidebarItem active={activeView === 'ministries'} icon={Music} label="Escalas & Ministérios" onClick={() => setActiveView('ministries')} />
-          <SidebarItem active={activeView === 'agenda'} icon={Calendar} label="Agenda & Reservas" onClick={() => setActiveView('agenda')} />
-          <SidebarItem active={activeView === 'financial'} icon={Wallet} label="Dízimos & Ofertas" onClick={() => setActiveView('financial')} />
-          <SidebarItem active={activeView === 'more'} icon={MoreHorizontal} label="Mais" onClick={() => setActiveView('more')} />
+          <SidebarItem active={activeView === 'news'} icon={BookOpen} label="Notícias" onClick={() => setActiveView('news')} />
+          {(userRole === 'admin' || userRole === 'lider') && <SidebarItem active={activeView === 'admin'} icon={Settings} label="Painel do Líder" onClick={() => setActiveView('admin')} />}
+          <div className="pt-4 border-t border-slate-50 space-y-2">
+            <SidebarItem active={activeView === 'members'} icon={Users} label="Membros" onClick={() => setActiveView('members')} />
+            <SidebarItem active={activeView === 'devotionals'} icon={Video} label="Devocionais" onClick={() => setActiveView('devotionals')} />
+            <SidebarItem active={activeView === 'prayers'} icon={Heart} label="Mural de Orações" onClick={() => setActiveView('prayers')} />
+            <SidebarItem active={activeView === 'chat'} icon={MessageCircle} label="Mensagens Líderes" onClick={() => setActiveView('chat')} />
+            <SidebarItem active={activeView === 'fake-news'} icon={ShieldCheck} label="Detector Fake News" onClick={() => setActiveView('fake-news')} />
+          </div>
+          <div className="pt-4 border-t border-slate-50 space-y-2">
+            <SidebarItem active={activeView === 'missions'} icon={Heart} label="Missões" onClick={() => setActiveView('missions')} />
+            <SidebarItem active={activeView === 'ministries'} icon={Music} label="Escalas & Ministérios" onClick={() => setActiveView('ministries')} />
+            <SidebarItem active={activeView === 'agenda'} icon={Calendar} label="Agenda & Reservas" onClick={() => setActiveView('agenda')} />
+            <SidebarItem active={activeView === 'financial'} icon={Wallet} label="Dízimos & Ofertas" onClick={() => setActiveView('financial')} />
+          </div>
         </nav>
         
-        <div className="mt-auto">
-          <div className="p-6 bg-slate-50 border border-slate-100 rounded-[32px] mb-8">
-            <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-900 mb-2">Modo Líder Ativo</h4>
-            <p className="text-[10px] text-slate-400 leading-relaxed">Acesso total aos relatórios e escalas dos departamentos.</p>
-          </div>
-          <div className="flex items-center space-x-4 p-5 bg-slate-100/50 rounded-[28px] border border-slate-100">
-            <div className="w-12 h-12 rounded-2xl bg-primary flex items-center justify-center text-white font-black shadow-lg shadow-primary/30">
+        <div className="mt-auto space-y-6">
+          <div className="flex items-center space-x-4 p-4 bg-background border border-slate-100 rounded-[20px] shadow-sm">
+            <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-white font-bold text-xs">
                LS
             </div>
             <div className="overflow-hidden">
-              <p className="text-xs font-black text-slate-800 truncate">Lucas Silveira</p>
-              <p className="text-[9px] text-slate-400 truncate uppercase mt-0.5 tracking-widest font-bold">Líder de Louvor</p>
+              <p className="text-xs font-bold text-slate-800 truncate">{user?.displayName?.split(' ')[0] || 'Irmão'}</p>
+              <p className="text-[9px] text-slate-500 truncate uppercase mt-0.5 tracking-widest font-bold">Líder</p>
             </div>
           </div>
         </div>
@@ -4604,16 +7306,43 @@ export default function App() {
 const SidebarItem = ({ active, icon: Icon, label, onClick }: any) => (
   <button 
     onClick={onClick}
-    className={`flex items-center space-x-4 w-full p-4 rounded-[20px] transition-all group ${active ? 'bg-primary-light text-primary' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600'}`}
+    className={`flex items-center space-x-4 w-full p-3.5 rounded-[16px] transition-all group ${active ? 'bg-primary/10 text-primary shadow-sm border border-primary/10' : 'text-slate-400 hover:bg-slate-50 hover:text-primary'}`}
   >
-    <Icon className={`w-5 h-5 ${active ? 'text-primary' : 'text-slate-400 group-hover:text-slate-500'}`} />
-    <span className="font-bold text-sm uppercase tracking-tight">{label}</span>
+    <div className={`p-2 rounded-xl transition-all ${active ? 'bg-primary text-white' : 'bg-slate-50 text-slate-400 group-hover:bg-primary/10 group-hover:text-primary'}`}>
+      <Icon className="w-4 h-4" />
+    </div>
+    <span className="font-bold text-[11px] uppercase tracking-widest leading-none">{label}</span>
   </button>
 );
 
 const BulletinViewModal = ({ bulletin, onClose }: { bulletin: DigitalBulletin | null, onClose: () => void }) => {
+  const [isDownloading, setIsDownloading] = useState(false);
   if (!bulletin) return null;
   const content = bulletin.jsonContent;
+
+  const handleDownloadPDF = async () => {
+    const element = document.getElementById('bulletin-pdf-export');
+    if (!element) return;
+    
+    setIsDownloading(true);
+    const opt = {
+      margin: 10,
+      filename: `boletim-${bulletin.theme.toLowerCase().replace(/\s+/g, '-')}.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 3, useCORS: true, letterRendering: true },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+
+    try {
+      // @ts-ignore
+      await html2pdf().from(element).set(opt).save();
+    } catch (error) {
+      console.error("PDF Export Error:", error);
+      alert("Erro ao gerar PDF. Tente novamente.");
+    } finally {
+      setIsDownloading(false);
+    }
+  };
   
   return (
     <AnimatePresence>
@@ -4621,7 +7350,7 @@ const BulletinViewModal = ({ bulletin, onClose }: { bulletin: DigitalBulletin | 
         initial={{ opacity: 0 }} 
         animate={{ opacity: 1 }} 
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/40 backdrop-blur-md"
+        className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-md"
         onClick={onClose}
       >
         <motion.div 
@@ -4629,113 +7358,184 @@ const BulletinViewModal = ({ bulletin, onClose }: { bulletin: DigitalBulletin | 
           animate={{ y: 0 }} 
           exit={{ y: "100%" }}
           transition={{ type: "spring", damping: 30, stiffness: 300 }}
-          className="w-full max-w-2xl h-[92vh] sm:h-auto sm:max-h-[85vh] bg-white rounded-t-[48px] sm:rounded-[48px] overflow-hidden flex flex-col"
+          className="w-full max-w-2xl h-[92vh] sm:h-[85vh] bg-white rounded-t-[48px] sm:rounded-[48px] overflow-hidden flex flex-col shadow-2xl"
           onClick={e => e.stopPropagation()}
         >
-          <div className="relative p-8 bg-slate-900 text-white overflow-hidden shrink-0">
+          {/* Header */}
+          <div className="relative p-8 bg-primary text-white shrink-0">
              <div className="absolute top-0 right-0 w-64 h-64 bg-primary/20 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl opacity-50" />
              <div className="relative z-10">
-                <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center justify-between mb-6">
                    <div className="flex items-center space-x-3">
                       <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center">
                          <FileText className="w-5 h-5 text-primary" />
                       </div>
-                      <span className="text-[10px] font-black uppercase tracking-widest text-primary-light">Boletim Digital</span>
+                      <span className="text-[10px] font-black uppercase tracking-widest text-primary-light">Boletim Digital Elite</span>
                    </div>
-                   <button onClick={onClose} className="p-3 bg-white/10 rounded-2xl hover:bg-white/20 transition-all">
-                      <X className="w-5 h-5 text-white" />
-                   </button>
+                   <div className="flex items-center space-x-2">
+                     <button 
+                        onClick={handleDownloadPDF} 
+                        disabled={isDownloading}
+                        className="p-3 bg-white/10 rounded-2xl hover:bg-primary transition-all flex items-center space-x-2 disabled:opacity-50"
+                        title="Baixar em PDF"
+                      >
+                        {isDownloading ? (
+                          <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        ) : (
+                          <Download className="w-5 h-5 text-white" />
+                        )}
+                        <span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">PDF</span>
+                     </button>
+                     <button onClick={onClose} className="p-3 bg-white/10 rounded-2xl hover:bg-white/20 transition-all">
+                        <X className="w-5 h-5 text-white" />
+                     </button>
+                   </div>
                 </div>
-                <h1 className="text-4xl font-black italic tracking-tighter mb-2">{content.capa.tema}</h1>
-                <div className="flex items-center space-x-4 text-xs font-bold text-white/50">
-                  <span className="flex items-center"><Calendar className="w-3.5 h-3.5 mr-1.5" /> {content.capa.data}</span>
-                  <span className="flex items-center bg-white/10 px-3 py-1 rounded-full text-white tracking-widest uppercase text-[8px]">{bulletin.preacher}</span>
+                <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+                  <div>
+                    <h1 className="text-4xl font-black italic tracking-tighter leading-tight">{bulletin.theme}</h1>
+                    <div className="flex items-center space-x-4 text-xs font-bold text-white/50 mt-2">
+                      <span className="flex items-center"><Calendar className="w-3.5 h-3.5 mr-1.5" /> {bulletin.date}</span>
+                      <span className="flex items-center bg-white/10 px-3 py-1 rounded-full text-white tracking-widest uppercase text-[8px] font-black">{bulletin.preacher}</span>
+                    </div>
+                  </div>
+                  <div className="text-right hidden md:block">
+                     <p className="text-[9px] font-black uppercase tracking-[0.3em] opacity-40">Edição Digital</p>
+                     <p className="text-xs font-bold text-primary">Igreja Conectada</p>
+                  </div>
                 </div>
              </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-8 space-y-12 bg-slate-50/50 pb-20">
-             <div className="text-center italic font-medium text-slate-500 bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm relative">
-                <div className="text-4xl absolute -top-4 left-6 text-primary/10">"</div>
-                <p className="text-lg leading-relaxed text-slate-700">“{content.capa.versiculo_destaque}”</p>
-             </div>
+          {/* Bulletin Content for Screen & PDF */}
+          <div className="flex-1 overflow-y-auto bg-slate-50 relative">
+            <div id="bulletin-pdf-export" className="p-8 space-y-12 bg-white min-h-full">
+              {/* Cover/Intro Quote */}
+              <div className="text-center py-12 px-6 border-y-2 border-slate-50 relative overflow-hidden bg-slate-50/30 rounded-[40px]">
+                 <div className="absolute top-4 left-10 text-6xl text-primary/10 font-serif leading-none">“</div>
+                 <p className="text-xl md:text-2xl font-serif italic text-slate-800 leading-relaxed px-8 relative z-10 leading-snug">
+                   {content.capa.versiculo_destaque}
+                 </p>
+              </div>
 
-             <section>
-               <SectionHeader title="Resumo da Mensagem" />
-               <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm leading-relaxed text-slate-600 text-sm whitespace-pre-wrap">
-                  {content.resumo_pregacao}
-               </div>
-             </section>
-
-             <section>
-               <SectionHeader title="Principais Lições" />
-               <div className="grid grid-cols-1 gap-3">
-                  {content.licoes.map((l: string, i: number) => (
-                    <div key={i} className="flex items-start space-x-4 p-5 bg-white rounded-3xl border border-slate-100 shadow-sm">
-                       <div className="w-8 h-8 rounded-xl bg-orange-50 flex items-center justify-center shrink-0">
-                          <span className="text-xs font-black text-orange-500">0{i+1}</span>
-                       </div>
-                       <p className="text-sm font-bold text-slate-700 leading-tight pt-1">{l}</p>
-                    </div>
-                  ))}
-               </div>
-             </section>
-
-             <section>
-               <SectionHeader title="Aprofundamento Bíblico" />
-               <div className="space-y-4">
-                  {content.versiculos_relacionados.map((v: any, i: number) => (
-                    <div key={i} className="p-6 bg-white rounded-[32px] border border-slate-100 shadow-sm">
-                       <h4 className="text-xs font-black text-primary uppercase tracking-widest mb-2">{v.referencia}</h4>
-                       <p className="text-sm text-slate-500 italic leading-relaxed">{v.trecho}</p>
-                    </div>
-                  ))}
-               </div>
-             </section>
-
-             <section>
-               <div className="bg-primary p-10 rounded-[48px] text-white overflow-hidden relative shadow-2xl shadow-primary/20">
-                  <div className="absolute top-0 right-0 p-8 opacity-10">
-                     <Zap className="w-32 h-32 text-white" />
-                  </div>
-                  <div className="relative z-10">
-                     <h3 className="text-2xl font-black italic tracking-tighter mb-8 text-white">Colocando em Prática</h3>
-                     <div className="space-y-4">
-                        {content.aplicacao.map((a: string, i: number) => (
-                          <div key={i} className="flex items-center space-x-4 bg-white/10 p-4 rounded-2xl border border-white/5">
-                             <CheckCircle2 className="w-5 h-5 text-indigo-300 shrink-0" />
-                             <span className="text-xs font-bold tracking-tight">{a}</span>
-                          </div>
-                        ))}
-                     </div>
-                  </div>
-               </div>
-             </section>
-
-             <section>
-               <SectionHeader title="Plano da Semana" />
-               <div className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden divide-y divide-slate-50">
-                  {content.semana_espiritual.map((d: any, i: number) => (
-                    <div key={i} className="p-6">
-                       <div className="flex items-center justify-between mb-2">
-                         <span className="text-[10px] font-black uppercase tracking-widest text-primary">{d.dia} • {d.foco}</span>
-                         <span className="text-[10px] font-bold text-slate-400 italic">{d.versiculo}</span>
-                       </div>
-                       <p className="text-xs text-slate-600 font-medium">🎯 {d.acao}</p>
-                    </div>
-                  ))}
-               </div>
-             </section>
-
-             <div className="bg-slate-900 p-12 rounded-[56px] text-center text-white shadow-2xl relative overflow-hidden mb-8">
-                <div className="absolute inset-0 bg-gradient-to-tr from-primary/20 to-indigo-500/20" />
-                <div className="relative z-10">
-                  <Flame className="w-8 h-8 text-orange-500 mx-auto mb-6 animate-pulse" />
-                  <p className="text-2xl font-black italic tracking-tighter leading-tight">
-                    "{content.frase_final}"
-                  </p>
+              {/* Message Summary */}
+              <section className="space-y-4">
+                <div className="flex items-center space-x-4">
+                  <div className="h-px flex-1 bg-slate-100" />
+                  <h2 className="text-[11px] font-black uppercase tracking-[0.4em] text-slate-400">Resumo da Mensagem</h2>
+                  <div className="h-px flex-1 bg-slate-100" />
                 </div>
-             </div>
+                <div className="text-slate-700 text-sm leading-relaxed whitespace-pre-wrap first-letter:text-4xl first-letter:font-black first-letter:mr-3 first-letter:float-left first-letter:text-primary">
+                  {content.resumo_pregacao}
+                </div>
+              </section>
+
+              {/* Lessons Grid */}
+              <section className="space-y-6">
+                <h3 className="text-lg font-black italic tracking-tight flex items-center space-x-3">
+                  <div className="w-1.5 h-6 bg-primary rounded-full" />
+                  <span>Lições Práticas</span>
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                   {content.licoes.map((l: string, i: number) => (
+                     <div key={i} className="flex flex-col p-6 bg-slate-50 rounded-3xl border border-slate-100 transition-all hover:bg-white hover:shadow-card">
+                        <span className="text-[9px] font-black text-primary uppercase tracking-[0.3em] mb-3">Ponto 0{i+1}</span>
+                        <p className="text-sm font-bold text-slate-800 leading-relaxed">{l}</p>
+                     </div>
+                   ))}
+                </div>
+              </section>
+
+              {/* Bible Deep Dive */}
+              <section className="space-y-6">
+                <h3 className="text-lg font-black italic tracking-tight flex items-center space-x-3">
+                   <div className="w-1.5 h-6 bg-indigo-500 rounded-full" />
+                   <span>Fundamentação Bíblica</span>
+                </h3>
+                <div className="space-y-4">
+                   {content.versiculos_relacionados.map((v: any, i: number) => (
+                     <div key={i} className="p-8 bg-white rounded-[32px] border border-slate-100 shadow-sm relative group overflow-hidden">
+                        <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                          <BookOpen className="w-12 h-12 text-slate-900" />
+                        </div>
+                        <h4 className="text-[10px] font-black text-primary uppercase tracking-widest mb-3">{v.referencia}</h4>
+                        <p className="text-sm text-slate-600 italic leading-relaxed relative z-10">"{v.trecho}"</p>
+                     </div>
+                   ))}
+                </div>
+              </section>
+
+              {/* Application Section */}
+              <section className="bg-primary/5 p-10 rounded-[48px] border border-primary/20 relative overflow-hidden group">
+                <div className="absolute top-0 right-0 p-8 opacity-10">
+                   <Zap className="w-32 h-32 text-primary" />
+                </div>
+                <div className="relative z-10">
+                   <h3 className="text-2xl font-black italic tracking-tighter mb-8 text-slate-800">Colocando em Prática</h3>
+                   <div className="grid grid-cols-1 gap-3">
+                      {content.aplicacao.map((a: string, i: number) => (
+                        <div key={i} className="flex items-center space-x-4 bg-white p-5 rounded-2xl border border-slate-100 hover:border-primary/30 transition-all shadow-sm">
+                           <div className="w-6 h-6 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                             <CheckCircle2 className="w-4 h-4" />
+                           </div>
+                           <span className="text-xs font-bold tracking-tight text-slate-600">{a}</span>
+                        </div>
+                      ))}
+                   </div>
+                </div>
+              </section>
+
+              {/* Week Plan */}
+              <section className="space-y-6">
+                <h3 className="text-lg font-black italic tracking-tight flex items-center space-x-3">
+                  <div className="w-1.5 h-6 bg-emerald-500 rounded-full" />
+                  <span>Jornada Espiritual da Semana</span>
+                </h3>
+                <div className="grid grid-cols-1 gap-2 bg-slate-50/50 p-2 rounded-[40px] border border-slate-100">
+                   {content.semana_espiritual.map((d: any, i: number) => (
+                     <div key={i} className="bg-white p-6 rounded-[32px] shadow-sm hover:shadow-card transition-all">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-8 h-8 rounded-xl bg-primary/5 flex items-center justify-center">
+                              <span className="text-[10px] font-black text-primary">{i+1}</span>
+                            </div>
+                            <span className="text-[11px] font-black uppercase tracking-widest text-slate-900">{d.dia}</span>
+                          </div>
+                          <div className="flex items-center text-[9px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 px-3 py-1 rounded-full">
+                            <span className="mr-2 opacity-50">📖</span>
+                            {d.versiculo}
+                          </div>
+                        </div>
+                        <div className="flex items-start space-x-3">
+                          <div className="px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded-md text-[8px] font-black uppercase tracking-widest shrink-0 mt-0.5">{d.foco}</div>
+                          <p className="text-sm text-slate-600 font-bold leading-snug">{d.acao}</p>
+                        </div>
+                     </div>
+                   ))}
+                </div>
+              </section>
+
+              {/* Final Conclusion */}
+              <div className="text-center py-20 px-8 rounded-[56px] bg-gradient-to-br from-primary to-blue-600 text-white relative overflow-hidden shadow-xl shadow-primary/20">
+                 <div className="absolute inset-0 bg-white/5 opacity-40" />
+                 <div className="relative z-10 space-y-6">
+                   <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-md">
+                     <Flame className="w-6 h-6 text-orange-400 animate-pulse" />
+                   </div>
+                   <p className="text-2xl md:text-3xl font-black italic tracking-tighter leading-tight drop-shadow-lg">
+                     "{content.frase_final}"
+                   </p>
+                   <div className="pt-8 opacity-60">
+                      <p className="text-[10px] font-black uppercase tracking-[0.5em]">Deus te abençoe</p>
+                   </div>
+                 </div>
+              </div>
+              
+              {/* Print Only Info */}
+              <div className="hidden print:block text-center pt-8 border-t border-slate-100">
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-300">Boletim Digital © Igreja Conectada • Gerado em {new Date().toLocaleDateString()}</p>
+              </div>
+            </div>
           </div>
         </motion.div>
       </motion.div>
