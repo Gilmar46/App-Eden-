@@ -31,7 +31,6 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
-          cache: gradle
 
       - name: Instalar dependências do App Éden
         run: npm ci
@@ -71,6 +70,9 @@ jobs:
           rm -rf android
           npx cap add android
           npx cap sync android
+
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Compilar APK
         working-directory: android
