@@ -83,11 +83,13 @@ jobs:
           app_path = Path("src/App.tsx")
 
           if not app_path.exists():
-              raise SystemExit("ERRO: src/App.tsx não foi encontrado.")
+              raise SystemExit(
+                  "ERRO: src/App.tsx não foi encontrado."
+              )
 
           text = app_path.read_text(encoding="utf-8")
 
-          # Localizar o import do Firebase Auth sem depender da indentação.
+          # Localizar o import atual do Firebase Authentication.
           auth_import_pattern = re.compile(
               r"import\s*\{[^}]*\}\s*"
               r"from\s*['\"]firebase/auth['\"]\s*;",
@@ -114,7 +116,8 @@ jobs:
           for name in required_names:
               if name not in old_auth_import:
                   raise SystemExit(
-                      f"ERRO: {name} não foi encontrado no import Firebase Auth."
+                      f"ERRO: {name} não foi encontrado "
+                      "no import do Firebase Auth."
                   )
 
           new_auth_import = """import {
@@ -126,7 +129,9 @@ jobs:
             User as FirebaseUser
           } from 'firebase/auth';
           import { Capacitor } from '@capacitor/core';
-          import { FirebaseAuthentication } from '@capacitor-firebase/authentication';"""
+          import {
+            FirebaseAuthentication
+          } from '@capacitor-firebase/authentication';"""
 
           text = (
               text[:auth_match.start()]
@@ -134,30 +139,87 @@ jobs:
               + text[auth_match.end():]
           )
 
-          # Função comum: login nativo no APK e popup no site.
+          # Função de login compatível com Android e navegador.
+          # Também apresenta na tela qualquer erro encontrado.
           helper = """
+          const describeGoogleAuthError = (error: unknown) => {
+            const authError = error as {
+              code?: string;
+              message?: string;
+            };
+
+            return {
+              code: authError?.code || 'sem código',
+              message:
+                authError?.message ||
+                String(error) ||
+                'Erro desconhecido'
+            };
+          };
+
           const signInWithGoogleCompat = async () => {
-            if (Capacitor.isNativePlatform()) {
-              const result =
-                await FirebaseAuthentication.signInWithGoogle();
+            try {
+              if (Capacitor.isNativePlatform()) {
+                if (
+                  !Capacitor.isPluginAvailable(
+                    'FirebaseAuthentication'
+                  )
+                ) {
+                  throw new Error(
+                    'O plugin FirebaseAuthentication não está ' +
+                    'disponível neste APK.'
+                  );
+                }
 
-              const idToken = result.credential?.idToken;
+                const result =
+                  await FirebaseAuthentication.signInWithGoogle({
+                    skipNativeAuth: true
+                  });
 
-              if (!idToken) {
-                throw new Error(
-                  'O Google não forneceu o token de autenticação.'
+                const idToken =
+                  result.credential?.idToken;
+
+                if (!idToken) {
+                  throw new Error(
+                    'O Google não forneceu o token de identificação.'
+                  );
+                }
+
+                const credential =
+                  GoogleAuthProvider.credential(idToken);
+
+                await signInWithCredential(
+                  auth,
+                  credential
                 );
+
+                return;
               }
 
-              const credential =
-                GoogleAuthProvider.credential(idToken);
+              const provider =
+                new GoogleAuthProvider();
 
-              await signInWithCredential(auth, credential);
-              return;
+              await signInWithPopup(
+                auth,
+                provider
+              );
+            } catch (error) {
+              const details =
+                describeGoogleAuthError(error);
+
+              console.error(
+                'Erro completo do login Google:',
+                error
+              );
+
+              window.alert(
+                'Falha no login Google.\\n\\n' +
+                'Código: ' + details.code + '\\n\\n' +
+                'Mensagem: ' + details.message
+              );
+
+              throw error;
             }
-
-            const provider = new GoogleAuthProvider();
-            await signInWithPopup(auth, provider);
           };
 
           """
@@ -166,12 +228,17 @@ jobs:
 
           if marker not in text:
               raise SystemExit(
-                  "ERRO: marcador principal do aplicativo não encontrado."
+                  "ERRO: marcador principal do aplicativo "
+                  "não foi encontrado."
               )
 
-          text = text.replace(marker, helper + marker, 1)
+          text = text.replace(
+              marker,
+              helper + marker,
+              1
+          )
 
-          # Atualizar o botão de login da tela inicial.
+          # Alterar o botão da tela inicial.
           login_view_pattern = re.compile(
               r"const handleLogin = async \(\) => \{\s*"
               r"const provider = new GoogleAuthProvider\(\);\s*"
@@ -183,18 +250,21 @@ jobs:
               try {
                 await signInWithGoogleCompat();"""
 
-          text, login_view_count = login_view_pattern.subn(
-              login_view_replacement,
-              text,
-              count=1
+          text, login_view_count = (
+              login_view_pattern.subn(
+                  login_view_replacement,
+                  text,
+                  count=1
+              )
           )
 
           if login_view_count != 1:
               raise SystemExit(
-                  "ERRO: login da tela inicial não foi encontrado."
+                  "ERRO: botão de login da tela inicial "
+                  "não foi encontrado."
               )
 
-          # Atualizar o segundo botão de login Google.
+          # Alterar o segundo botão de login existente no aplicativo.
           google_login_pattern = re.compile(
               r"const handleGoogleLogin = async \(\) => \{\s*"
               r"const provider = new GoogleAuthProvider\(\);\s*"
@@ -206,19 +276,25 @@ jobs:
               try {
                 await signInWithGoogleCompat();"""
 
-          text, google_login_count = google_login_pattern.subn(
-              google_login_replacement,
-              text,
-              count=1
+          text, google_login_count = (
+              google_login_pattern.subn(
+                  google_login_replacement,
+                  text,
+                  count=1
+              )
           )
 
           if google_login_count != 1:
               raise SystemExit(
-                  "ERRO: segundo login Google não foi encontrado."
+                  "ERRO: segundo botão de login Google "
+                  "não foi encontrado."
               )
 
-          # Encerrar a sessão nativa e a sessão JavaScript.
-          old_sign_out = "const handleSignOut = () => signOut(auth);"
+          # Encerrar sessão nativa e sessão Firebase JavaScript.
+          sign_out_pattern = re.compile(
+              r"const handleSignOut\s*=\s*"
+              r"\(\)\s*=>\s*signOut\(auth\);"
+          )
 
           new_sign_out = """const handleSignOut = async () => {
               if (Capacitor.isNativePlatform()) {
@@ -235,16 +311,23 @@ jobs:
               await signOut(auth);
             };"""
 
-          if old_sign_out not in text:
+          text, sign_out_count = sign_out_pattern.subn(
+              new_sign_out,
+              text,
+              count=1
+          )
+
+          if sign_out_count != 1:
               raise SystemExit(
                   "ERRO: função de sair não foi encontrada."
               )
 
-          text = text.replace(old_sign_out, new_sign_out, 1)
+          app_path.write_text(
+              text,
+              encoding="utf-8"
+          )
 
-          app_path.write_text(text, encoding="utf-8")
-
-          # Configurar persistência do Firebase Auth dentro do APK.
+          # Configurar persistência da sessão Firebase no Android.
           firebase_path = Path("src/lib/firebase.ts")
 
           if not firebase_path.exists():
@@ -252,7 +335,9 @@ jobs:
                   "ERRO: src/lib/firebase.ts não foi encontrado."
               )
 
-          firebase_text = firebase_path.read_text(encoding="utf-8")
+          firebase_text = firebase_path.read_text(
+              encoding="utf-8"
+          )
 
           firebase_import_pattern = re.compile(
               r"import\s*\{\s*getAuth\s*\}\s*"
@@ -276,27 +361,35 @@ jobs:
 
           if firebase_import_count != 1:
               raise SystemExit(
-                  "ERRO: import getAuth não foi encontrado em firebase.ts."
+                  "ERRO: import getAuth não foi encontrado "
+                  "em firebase.ts."
               )
 
-          old_auth_export = "export const auth = getAuth(app);"
-
-          new_auth_export = """export const auth = Capacitor.isNativePlatform()
-            ? initializeAuth(app, {
-                persistence: indexedDBLocalPersistence
-              })
-            : getAuth(app);"""
-
-          if old_auth_export not in firebase_text:
-              raise SystemExit(
-                  "ERRO: inicialização do Auth não foi encontrada."
-              )
-
-          firebase_text = firebase_text.replace(
-              old_auth_export,
-              new_auth_export,
-              1
+          auth_export_pattern = re.compile(
+              r"export\s+const\s+auth\s*=\s*"
+              r"getAuth\(app\)\s*;"
           )
+
+          new_auth_export = """export const auth =
+            Capacitor.isNativePlatform()
+              ? initializeAuth(app, {
+                  persistence: indexedDBLocalPersistence
+                })
+              : getAuth(app);"""
+
+          firebase_text, auth_export_count = (
+              auth_export_pattern.subn(
+                  new_auth_export,
+                  firebase_text,
+                  count=1
+              )
+          )
+
+          if auth_export_count != 1:
+              raise SystemExit(
+                  "ERRO: inicialização do Firebase Auth "
+                  "não foi encontrada."
+              )
 
           firebase_path.write_text(
               firebase_text,
@@ -304,11 +397,25 @@ jobs:
           )
 
           print("Import Firebase Auth atualizado.")
-          print("Login inicial atualizado:", login_view_count)
-          print("Segundo login atualizado:", google_login_count)
-          print("Função de sair atualizada.")
-          print("Persistência do Firebase Auth configurada.")
-          print("Login Google adaptado com sucesso.")
+          print(
+              "Login inicial atualizado:",
+              login_view_count
+          )
+          print(
+              "Segundo login atualizado:",
+              google_login_count
+          )
+          print(
+              "Função de sair atualizada:",
+              sign_out_count
+          )
+          print(
+              "Persistência Firebase configurada:",
+              auth_export_count
+          )
+          print(
+              "Login Google Android adaptado com sucesso."
+          )
           PY
 
       - name: Compilar aplicativo web
@@ -321,7 +428,7 @@ jobs:
           npx cap add android
 
           if [ ! -f "google-services.json" ]; then
-            echo "ERRO: google-services.json não foi encontrado na raiz."
+            echo "ERRO: google-services.json não foi encontrado."
             exit 1
           fi
 
@@ -331,11 +438,14 @@ jobs:
           python3 <<'PY'
           from pathlib import Path
 
-          variables_path = Path("android/variables.gradle")
+          variables_path = Path(
+              "android/variables.gradle"
+          )
 
           if not variables_path.exists():
               raise SystemExit(
-                  "ERRO: android/variables.gradle não foi encontrado."
+                  "ERRO: android/variables.gradle "
+                  "não foi encontrado."
               )
 
           variables_text = variables_path.read_text(
@@ -356,9 +466,12 @@ jobs:
                   encoding="utf-8"
               )
 
-          print("Dependências nativas do Google configuradas.")
+          print(
+              "Dependências nativas do Google configuradas."
+          )
           PY
 
+          npx cap update android
           npx cap sync android
 
       - name: Verificar configuração Firebase Android
@@ -374,6 +487,9 @@ jobs:
           grep -q "rgcfaIncludeGoogle" \
             android/variables.gradle
 
+          grep -q "androidxCredentialsVersion" \
+            android/variables.gradle
+
           echo "Configuração Firebase Android confirmada."
 
       - name: Restaurar chave de assinatura
@@ -384,22 +500,22 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
-            echo "ERRO: Secret ANDROID_KEYSTORE_BASE64 não encontrado."
+            echo "ERRO: Secret ANDROID_KEYSTORE_BASE64 ausente."
             exit 1
           fi
 
           if [ -z "$ANDROID_KEYSTORE_PASSWORD" ]; then
-            echo "ERRO: Secret ANDROID_KEYSTORE_PASSWORD não encontrado."
+            echo "ERRO: Secret ANDROID_KEYSTORE_PASSWORD ausente."
             exit 1
           fi
 
           if [ -z "$ANDROID_KEY_ALIAS" ]; then
-            echo "ERRO: Secret ANDROID_KEY_ALIAS não encontrado."
+            echo "ERRO: Secret ANDROID_KEY_ALIAS ausente."
             exit 1
           fi
 
           if [ -z "$ANDROID_KEY_PASSWORD" ]; then
-            echo "ERRO: Secret ANDROID_KEY_PASSWORD não encontrado."
+            echo "ERRO: Secret ANDROID_KEY_PASSWORD ausente."
             exit 1
           fi
 
@@ -413,7 +529,7 @@ jobs:
             -alias "$ANDROID_KEY_ALIAS" \
             > /dev/null
 
-          echo "Chave de assinatura restaurada com sucesso."
+          echo "Chave de assinatura restaurada."
 
       - name: Configurar Gradle
         uses: gradle/actions/setup-gradle@v4
