@@ -378,13 +378,13 @@ jobs:
             exit 1
           fi
 
-          if [ ! -f "aplicar-igreja-batista-eden-v3.py" ]; then
-            echo "ERRO: aplicar-igreja-batista-eden-v3.py não foi encontrado na raiz."
+          if [ ! -f "aplicar-igreja-batista-eden-v4.py" ]; then
+            echo "ERRO: aplicar-igreja-batista-eden-v4.py não foi encontrado na raiz."
             exit 1
           fi
 
-          if [ ! -f "igreja-batista-eden-logo.png" ]; then
-            echo "ERRO: igreja-batista-eden-logo.png não foi encontrado na raiz."
+          if [ ! -f "aplicar-igreja-batista-eden-master-v2.py" ]; then
+            echo "ERRO: aplicar-igreja-batista-eden-master-v2.py não foi encontrado na raiz."
             exit 1
           fi
 
@@ -440,7 +440,8 @@ jobs:
           PY
 
           python3 aplicar-igreja-batista-eden-v2.py
-          python3 aplicar-igreja-batista-eden-v3.py
+          python3 aplicar-igreja-batista-eden-v4.py
+          python3 aplicar-igreja-batista-eden-master-v2.py
 
           if [ ! -f "public/igreja-batista-eden-logo.png" ]; then
             echo "ERRO: o logotipo da Igreja Batista Éden não foi criado."
@@ -462,7 +463,30 @@ jobs:
             exit 1
           fi
 
-          echo "Visual, boletim e identidade da Igreja Batista Éden aplicados."
+          grep -q "Aplicativo Master ativo" src/App.tsx
+          grep -q "PUBLICAR PARA TODOS OS MEMBROS" src/App.tsx
+          grep -q "Sincronizado com os membros" src/App.tsx
+          grep -q "worshipProgram" src/App.tsx
+          grep -q "gilmarcoutobrito@gmail.com" src/App.tsx
+
+          echo "Visual e versão Master V2 da Igreja Batista Éden aplicados e revisados."
+
+      - name: Revisar arquivos antes da compilação
+        run: |
+          python3 -m py_compile \
+            aplicar-unidade-viva.py \
+            aplicar-igreja-batista-eden-v2.py \
+            aplicar-igreja-batista-eden-v4.py \
+            aplicar-igreja-batista-eden-master-v2.py
+
+          node -e "JSON.parse(require('fs').readFileSync('package.json', 'utf8')); console.log('package.json válido.')"
+
+          if [ ! -s "public/igreja-batista-eden-logo.png" ]; then
+            echo "ERRO: logotipo público ausente ou vazio."
+            exit 1
+          fi
+
+          echo "Revisão dos arquivos concluída."
 
       - name: Compilar aplicativo web
         run: npm run build
@@ -538,7 +562,7 @@ jobs:
           npx cap sync android
 
           python3 aplicar-igreja-batista-eden-v2.py --android-only
-          python3 aplicar-igreja-batista-eden-v3.py --android-only
+          python3 aplicar-igreja-batista-eden-v4.py --android-only
 
       - name: Verificar plugin dentro do Android
         run: |
@@ -622,10 +646,10 @@ jobs:
 
       - name: Restaurar chave de assinatura
         env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEYSTORE_BASE64: "${{ secrets.ANDROID_KEYSTORE_BASE64 }}"
+          ANDROID_KEYSTORE_PASSWORD: "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
+          ANDROID_KEY_ALIAS: "${{ secrets.ANDROID_KEY_ALIAS }}"
+          ANDROID_KEY_PASSWORD: "${{ secrets.ANDROID_KEY_PASSWORD }}"
         run: |
           if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
             echo "ERRO: Secret ANDROID_KEYSTORE_BASE64 ausente."
@@ -665,9 +689,9 @@ jobs:
       - name: Compilar APK assinado
         working-directory: android
         env:
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEYSTORE_PASSWORD: "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
+          ANDROID_KEY_ALIAS: "${{ secrets.ANDROID_KEY_ALIAS }}"
+          ANDROID_KEY_PASSWORD: "${{ secrets.ANDROID_KEY_PASSWORD }}"
         run: |
           chmod +x gradlew
 
