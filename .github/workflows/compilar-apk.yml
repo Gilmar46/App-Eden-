@@ -1,4 +1,4 @@
-name: Compilar APK App Eden
+name: Compilar APK Unidade Viva
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   compilar-apk:
-    name: Gerar APK Android Assinado
+    name: Gerar APK Unidade Viva
     runs-on: ubuntu-latest
     timeout-minutes: 40
 
@@ -32,7 +32,7 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - name: Instalar dependências do App Éden
+      - name: Instalar dependências do aplicativo
         run: npm ci
 
       - name: Instalar e registrar Capacitor e login Google
@@ -88,7 +88,7 @@ jobs:
 
           const config: CapacitorConfig = {
             appId: 'com.jsonia.appeden',
-            appName: 'App Éden',
+            appName: 'Unidade Viva',
             webDir: 'dist',
 
             server: {
@@ -366,6 +366,37 @@ jobs:
           print("Login Google Android adaptado com sucesso.")
           PY
 
+      - name: Aplicar visual Unidade Viva
+        run: |
+          if [ ! -f "aplicar-unidade-viva.py" ]; then
+            echo "ERRO: aplicar-unidade-viva.py não foi encontrado na raiz."
+            exit 1
+          fi
+
+          python3 aplicar-unidade-viva.py
+
+          if [ ! -f "public/unidade-viva-logo.png" ]; then
+            echo "ERRO: o logotipo Unidade Viva não foi criado."
+            exit 1
+          fi
+
+          if ! grep -q "Unidade Viva" src/App.tsx; then
+            echo "ERRO: o nome Unidade Viva não foi aplicado."
+            exit 1
+          fi
+
+          if ! grep -q "unidade-viva-font-scale" src/App.tsx; then
+            echo "ERRO: o botão A+ Zoom não foi aplicado."
+            exit 1
+          fi
+
+          if ! grep -q "Pedidos de Oração" src/App.tsx; then
+            echo "ERRO: os quadrinhos da página inicial não foram aplicados."
+            exit 1
+          fi
+
+          echo "Visual Unidade Viva aplicado e conferido."
+
       - name: Compilar aplicativo web
         run: npm run build
 
@@ -460,7 +491,7 @@ jobs:
           cat "$PLUGIN_FILE"
 
           if ! grep -q \
-            '"pkg": "@capacitor-firebase/authentication"' \
+            "@capacitor-firebase/authentication" \
             "$PLUGIN_FILE"; then
             echo "ERRO: Firebase Authentication não entrou no APK."
             exit 1
@@ -612,14 +643,14 @@ jobs:
             "$APK_ORIGINAL"
 
           cp "$APK_ORIGINAL" \
-            saida/App-Eden-release.apk
+            saida/Unidade-Viva-release.apk
 
-          echo "APK assinado e verificado com sucesso."
+          echo "APK Unidade Viva assinado e verificado com sucesso."
 
       - name: Publicar APK
         uses: actions/upload-artifact@v4
         with:
-          name: App-Eden-APK-Assinado
-          path: saida/App-Eden-release.apk
+          name: Unidade-Viva-APK-Assinado
+          path: saida/Unidade-Viva-release.apk
           retention-days: 30
           if-no-files-found: error
