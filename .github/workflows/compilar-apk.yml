@@ -369,15 +369,15 @@ jobs:
           print("Login Google Android adaptado com sucesso.")
           PY
 
-      - name: Criar arquivo Master V2 automaticamente
+      - name: Criar Master V4 com Membros visível
         run: |
-          cat > aplicar-igreja-batista-eden-master-v2.py <<'PYMASTER'
+          cat > aplicar-igreja-batista-eden-master-v4.py <<'PYMASTER'
           from pathlib import Path
           import re
           
           APP_PATH = Path("src/App.tsx")
           MASTER_EMAIL = "gilmarcoutobrito@gmail.com"
-          VERSION = "master-v2-revisado"
+          VERSION = "master-v4-membros-visivel"
           
           
           def replace_once(text: str, old: str, new: str, error: str) -> str:
@@ -545,6 +545,232 @@ jobs:
           
               return text[:admin_case_index] + admin_segment
           
+          
+          
+          def patch_panel_visibility(text: str) -> str:
+              """Mostra o painel para Master, administrador e líder."""
+          
+              mobile_old = """                (userRole === 'admin' || userRole === 'lider') ? { icon: Settings, label: 'Painel do Líder', info: 'Gestão ministerial', view: 'admin' } : null,"""
+          
+              mobile_new = """                (
+                            userRole === 'master' ||
+                            userRole === 'admin' ||
+                            userRole === 'lider'
+                          ) ? {
+                            icon: Settings,
+                            label: isMaster
+                              ? 'Painel Master'
+                              : 'Painel do Líder',
+                            info: isMaster
+                              ? 'Administração geral'
+                              : 'Gestão ministerial',
+                            view: 'admin'
+                          } : null,"""
+          
+              if mobile_old in text:
+                  text = text.replace(
+                      mobile_old,
+                      mobile_new,
+                      1
+                  )
+              elif "label: isMaster\n                    ? 'Painel Master'" not in text:
+                  raise SystemExit(
+                      "ERRO: botão do painel no menu Mais não foi encontrado."
+                  )
+          
+              desktop_old = """          {(userRole === 'admin' || userRole === 'lider') && <SidebarItem active={activeView === 'admin'} icon={Settings} label="Painel do Líder" onClick={() => setActiveView('admin')} />}"""
+          
+              desktop_new = """          {(
+                      userRole === 'master' ||
+                      userRole === 'admin' ||
+                      userRole === 'lider'
+                    ) && (
+                      <SidebarItem
+                        active={activeView === 'admin'}
+                        icon={Settings}
+                        label={
+                          isMaster
+                            ? 'Painel Master'
+                            : 'Painel do Líder'
+                        }
+                        onClick={() => setActiveView('admin')}
+                      />
+                    )}"""
+          
+              if desktop_old in text:
+                  text = text.replace(
+                      desktop_old,
+                      desktop_new,
+                      1
+                  )
+              elif "label={\n                isMaster\n                  ? 'Painel Master'" not in text:
+                  raise SystemExit(
+                      "ERRO: botão do painel na barra lateral não foi encontrado."
+                  )
+          
+              home_button_old = """                  Painel Administrativo
+                          </button>"""
+          
+              home_button_new = """                  {isMaster
+                              ? 'Painel Master'
+                              : 'Painel Administrativo'}
+                          </button>"""
+          
+              if home_button_old in text:
+                  text = text.replace(
+                      home_button_old,
+                      home_button_new,
+                      1
+                  )
+          
+              return text
+          
+          
+          def patch_members_visibility(text: str) -> str:
+              """Exibe Membros na entrada, em Explorar e no Painel Master."""
+          
+              # 1. Adicionar Membros aos quadrinhos da tela inicial.
+              home_start = text.find("      case 'home': {")
+              home_end = text.find("        return (", home_start)
+          
+              if home_start == -1 or home_end == -1:
+                  raise SystemExit(
+                      "ERRO: tela inicial não encontrada para adicionar Membros."
+                  )
+          
+              home_segment = text[home_start:home_end]
+          
+              if (
+                  "label: 'Membros'" not in home_segment
+                  or "setActiveView('members')" not in home_segment
+              ):
+                  events_tile = """          {
+                      label: 'Eventos',
+                      icon: CalendarDays,
+                      background:
+                        'bg-gradient-to-br from-[#EAF4FF] to-[#DBECFA]',
+                      iconColor: 'text-[#0C5A9D]',
+                      onClick: () => setActiveView('events')
+                    }"""
+          
+                  members_and_events = """          {
+                      label: 'Membros',
+                      icon: Users,
+                      background:
+                        'bg-gradient-to-br from-[#E7F3FC] to-[#D5E9F7]',
+                      iconColor: 'text-[#0C5A9D]',
+                      onClick: () => setActiveView('members')
+                    },
+                    {
+                      label: 'Eventos',
+                      icon: CalendarDays,
+                      background:
+                        'bg-gradient-to-br from-[#EAF4FF] to-[#DBECFA]',
+                      iconColor: 'text-[#0C5A9D]',
+                      onClick: () => setActiveView('events')
+                    }"""
+          
+                  if events_tile not in home_segment:
+                      raise SystemExit(
+                          "ERRO: quadrinho Eventos não encontrado "
+                          "para inserir Membros na tela inicial."
+                      )
+          
+                  home_segment = home_segment.replace(
+                      events_tile,
+                      members_and_events,
+                      1
+                  )
+          
+                  text = (
+                      text[:home_start]
+                      + home_segment
+                      + text[home_end:]
+                  )
+          
+              # 2. Adicionar Membros à página Explorar do celular.
+              more_start = text.find("      case 'more': {")
+              more_end = text.find("      case 'news':", more_start)
+          
+              if more_start == -1 or more_end == -1:
+                  raise SystemExit(
+                      "ERRO: página Explorar não encontrada."
+                  )
+          
+              more_segment = text[more_start:more_end]
+          
+              if "view: 'members' as View" not in more_segment:
+                  ministry_item = """          { label: 'Ministérios', info: 'Departamentos da igreja', icon: Users, view: 'ministry-list' as View },"""
+          
+                  members_and_ministry = """          { label: 'Membros', info: 'Lista, busca e cadastro', icon: Users, view: 'members' as View },
+                    { label: 'Ministérios', info: 'Departamentos da igreja', icon: Users, view: 'ministry-list' as View },"""
+          
+                  if ministry_item not in more_segment:
+                      raise SystemExit(
+                          "ERRO: item Ministérios não encontrado "
+                          "na página Explorar."
+                      )
+          
+                  more_segment = more_segment.replace(
+                      ministry_item,
+                      members_and_ministry,
+                      1
+                  )
+          
+                  text = (
+                      text[:more_start]
+                      + more_segment
+                      + text[more_end:]
+                  )
+          
+              # 3. Criar um acesso destacado no Painel Master.
+              admin_start = text.find("      case 'admin':")
+              admin_end = text.find("      case 'devotionals':", admin_start)
+          
+              if admin_start == -1:
+                  raise SystemExit(
+                      "ERRO: Painel Master não encontrado."
+                  )
+          
+              if admin_end == -1:
+                  admin_end = len(text)
+          
+              admin_segment = text[admin_start:admin_end]
+          
+              if "ACESSAR GESTÃO DE MEMBROS" not in admin_segment:
+                  tabs_marker = """            <div className="flex items-center space-x-2 overflow-x-auto pb-4 mb-8 scrollbar-hide no-wrap">"""
+          
+                  members_shortcut = """            {(isMaster || isAdmin) && (
+                        <button
+                          type="button"
+                          onClick={() => setAdminActiveTab('members')}
+                          className="w-full mb-5 min-h-[58px] rounded-2xl bg-[#0C5A9D] text-white font-black flex items-center justify-center gap-3 shadow-lg shadow-blue-900/15"
+                        >
+                          <Users className="w-6 h-6" />
+                          ACESSAR GESTÃO DE MEMBROS
+                        </button>
+                      )}
+          
+          """
+          
+                  if tabs_marker not in admin_segment:
+                      raise SystemExit(
+                          "ERRO: abas do Painel Master não encontradas."
+                      )
+          
+                  admin_segment = admin_segment.replace(
+                      tabs_marker,
+                      members_shortcut + tabs_marker,
+                      1
+                  )
+          
+                  text = (
+                      text[:admin_start]
+                      + admin_segment
+                      + text[admin_end:]
+                  )
+          
+              return text
           
           def patch_shared_bulletin(text: str) -> str:
               local_block_pattern = re.compile(
@@ -814,11 +1040,42 @@ jobs:
               text = APP_PATH.read_text(encoding="utf-8")
               text = text.replace("\r\n", "\n").replace("\r", "\n")
           
+              # Corrigir sempre os acessos do painel e de Membros,
+              # inclusive quando uma versão Master anterior já estiver ativa.
+              text = patch_panel_visibility(text)
+              text = patch_members_visibility(text)
+          
               if "Aplicativo Master ativo" in text:
-                  print("Versão Master V2 já aplicada. Nenhuma alteração duplicada foi feita.")
+                  required_panel_markers = [
+                      "userRole === 'master'",
+                      "? 'Painel Master'",
+                      ": 'Painel do Líder'",
+                      "label: 'Membros'",
+                      "view: 'members' as View",
+                      "ACESSAR GESTÃO DE MEMBROS",
+                  ]
+          
+                  missing_panel_markers = [
+                      marker for marker in required_panel_markers
+                      if marker not in text
+                  ]
+          
+                  if missing_panel_markers:
+                      raise SystemExit(
+                          "ERRO: correção do painel incompleta. Marcadores ausentes: "
+                          + ", ".join(missing_panel_markers)
+                      )
+          
+                  APP_PATH.write_text(text, encoding="utf-8")
+                  print(
+                      "Master já estava ativo; visibilidade do painel "
+                      "foi revisada e corrigida."
+                  )
                   return
           
               text = patch_master_identity(text)
+              text = patch_panel_visibility(text)
+              text = patch_members_visibility(text)
               text = patch_shared_bulletin(text)
               text = patch_shared_events_message(text)
           
@@ -829,6 +1086,12 @@ jobs:
                   "PUBLICAR PARA TODOS OS MEMBROS",
                   "worshipProgram",
                   "Sincronizado com os membros",
+                  "userRole === 'master'",
+                  "? 'Painel Master'",
+                  ": 'Painel do Líder'",
+                  "label: 'Membros'",
+                  "view: 'members' as View",
+                  "ACESSAR GESTÃO DE MEMBROS",
               ]
           
               missing_markers = [
@@ -848,7 +1111,7 @@ jobs:
               print("Conta Master configurada:", MASTER_EMAIL)
               print("Boletim sincronizado pelo Firebase.")
               print("Eventos da Agenda confirmados em tempo real.")
-              print("Primeira versão Master aplicada com sucesso.")
+              print("Versão Master V4 com Membros visível aplicada com sucesso.")
           
           
           if __name__ == "__main__":
@@ -856,9 +1119,9 @@ jobs:
           PYMASTER
 
           python3 -m py_compile \
-            aplicar-igreja-batista-eden-master-v2.py
+            aplicar-igreja-batista-eden-master-v4.py
 
-          echo "Arquivo Master V2 criado e revisado automaticamente."
+          echo "Master V4 com Membros visível criado e revisado."
 
       - name: Aplicar visual Igreja Batista Éden
         run: |
@@ -930,7 +1193,7 @@ jobs:
 
           python3 aplicar-igreja-batista-eden-v2.py
           python3 aplicar-igreja-batista-eden-v4.py
-          python3 aplicar-igreja-batista-eden-master-v2.py
+          python3 aplicar-igreja-batista-eden-master-v4.py
 
           if [ ! -f "public/igreja-batista-eden-logo.png" ]; then
             echo "ERRO: o logotipo da Igreja Batista Éden não foi criado."
@@ -957,8 +1220,29 @@ jobs:
           grep -q "Sincronizado com os membros" src/App.tsx
           grep -q "worshipProgram" src/App.tsx
           grep -q "gilmarcoutobrito@gmail.com" src/App.tsx
+          grep -q "userRole === 'master'" src/App.tsx
+          grep -q "'Painel Master'" src/App.tsx
+          grep -q "'Painel do Líder'" src/App.tsx
+          grep -q "label: 'Membros'" src/App.tsx
+          grep -q "view: 'members' as View" src/App.tsx
+          grep -q "ACESSAR GESTÃO DE MEMBROS" src/App.tsx
+          grep -q "setActiveView('members')" src/App.tsx
 
-          echo "Visual e versão Master V2 da Igreja Batista Éden aplicados e revisados."
+          MEMBROS_HOME_COUNT=$(grep -o "label: 'Membros'" src/App.tsx | wc -l)
+
+          if [ "$MEMBROS_HOME_COUNT" -lt 1 ]; then
+            echo "ERRO: o acesso Membros não foi criado."
+            exit 1
+          fi
+
+          PAINEL_MASTER_COUNT=$(grep -o "'Painel Master'" src/App.tsx | wc -l)
+
+          if [ "$PAINEL_MASTER_COUNT" -lt 2 ]; then
+            echo "ERRO: Painel Master não foi liberado nos dois menus."
+            exit 1
+          fi
+
+          echo "Visual e versão Master V4 da Igreja Batista Éden aplicados e revisados."
 
       - name: Revisar arquivos antes da compilação
         run: |
@@ -966,7 +1250,7 @@ jobs:
             aplicar-unidade-viva.py \
             aplicar-igreja-batista-eden-v2.py \
             aplicar-igreja-batista-eden-v4.py \
-            aplicar-igreja-batista-eden-master-v2.py
+            aplicar-igreja-batista-eden-master-v4.py
 
           node -e "JSON.parse(require('fs').readFileSync('package.json', 'utf8')); console.log('package.json válido.')"
 
