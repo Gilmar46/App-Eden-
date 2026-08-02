@@ -622,10 +622,10 @@ jobs:
 
       - name: Restaurar chave de assinatura
         env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEYSTORE_BASE64: "${{ secrets.ANDROID_KEYSTORE_BASE64 }}"
+          ANDROID_KEYSTORE_PASSWORD: "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
+          ANDROID_KEY_ALIAS: "${{ secrets.ANDROID_KEY_ALIAS }}"
+          ANDROID_KEY_PASSWORD: "${{ secrets.ANDROID_KEY_PASSWORD }}"
         run: |
           if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
             echo "ERRO: Secret ANDROID_KEYSTORE_BASE64 ausente."
@@ -665,6 +665,63 @@ jobs:
       - name: Compilar APK assinado
         working-directory: android
         env:
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_P
+          ANDROID_KEYSTORE_PASSWORD: "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
+          ANDROID_KEY_ALIAS: "${{ secrets.ANDROID_KEY_ALIAS }}"
+          ANDROID_KEY_PASSWORD: "${{ secrets.ANDROID_KEY_PASSWORD }}"
+        run: |
+          chmod +x gradlew
+
+          ./gradlew assembleRelease \
+            --no-daemon \
+            --stacktrace \
+            "-Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/android/app/app-eden-upload.jks" \
+            "-Pandroid.injected.signing.store.password=$ANDROID_KEYSTORE_PASSWORD" \
+            "-Pandroid.injected.signing.key.alias=$ANDROID_KEY_ALIAS" \
+            "-Pandroid.injected.signing.key.password=$ANDROID_KEY_PASSWORD"
+
+      - name: Verificar e preparar APK
+        run: |
+          mkdir -p saida
+
+          APK_ORIGINAL=$(find \
+            android/app/build/outputs/apk/release \
+            -maxdepth 1 \
+            -type f \
+            -name "*.apk" \
+            | head -n 1)
+
+          if [ -z "$APK_ORIGINAL" ]; then
+            echo "ERRO: APK não foi encontrado."
+            exit 1
+          fi
+
+          BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" \
+            -mindepth 1 \
+            -maxdepth 1 \
+            -type d \
+            | sort -V \
+            | tail -n 1)
+
+          if [ -z "$BUILD_TOOLS" ]; then
+            echo "ERRO: Android Build Tools não encontrado."
+            exit 1
+          fi
+
+          "$BUILD_TOOLS/apksigner" verify \
+            --verbose \
+            --print-certs \
+            "$APK_ORIGINAL"
+
+          cp "$APK_ORIGINAL" \
+            saida/Igreja-Batista-Eden-release.apk
+
+          echo "APK Igreja Batista Éden assinado e verificado com sucesso."
+
+      - name: Publicar APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Igreja-Batista-Eden-APK-Assinado
+          path: saida/Igreja-Batista-Eden-release.apk
+          retention-days: 30
+          if-no-files-found: error
+          
