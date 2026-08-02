@@ -35,13 +35,49 @@ jobs:
       - name: Instalar dependências do App Éden
         run: npm ci
 
-      - name: Instalar Capacitor e login Google
+      - name: Instalar e registrar Capacitor e login Google
         run: |
-          npm install --no-save \
+          npm install --save-exact \
             @capacitor/core@8 \
-            @capacitor/cli@8 \
             @capacitor/android@8 \
             @capacitor-firebase/authentication@8
+
+          npm install --save-dev --save-exact \
+            @capacitor/cli@8
+
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+
+          const packageJson = JSON.parse(
+            fs.readFileSync('package.json', 'utf8')
+          );
+
+          const dependencies = [
+            '@capacitor/core',
+            '@capacitor/android',
+            '@capacitor-firebase/authentication'
+          ];
+
+          for (const dependency of dependencies) {
+            if (!packageJson.dependencies?.[dependency]) {
+              console.error(
+                `ERRO: ${dependency} não foi registrado no package.json.`
+              );
+              process.exit(1);
+            }
+          }
+
+          if (!packageJson.devDependencies?.['@capacitor/cli']) {
+            console.error(
+              'ERRO: @capacitor/cli não foi registrado no package.json.'
+            );
+            process.exit(1);
+          }
+
+          console.log(
+            'Capacitor e Firebase Authentication registrados corretamente.'
+          );
+          NODE
 
       - name: Criar configuração Android
         run: |
@@ -89,7 +125,6 @@ jobs:
 
           text = app_path.read_text(encoding="utf-8")
 
-          # Localizar o import atual do Firebase Authentication.
           auth_import_pattern = re.compile(
               r"import\s*\{[^}]*\}\s*"
               r"from\s*['\"]firebase/auth['\"]\s*;",
@@ -139,8 +174,6 @@ jobs:
               + text[auth_match.end():]
           )
 
-          # Função de login compatível com Android e navegador.
-          # Também apresenta na tela qualquer erro encontrado.
           helper = """
           const describeGoogleAuthError = (error: unknown) => {
             const authError = error as {
@@ -172,21 +205,25 @@ jobs:
                 }
 
                 const result =
-                  await FirebaseAuthentication.signInWithGoogle({
-                    skipNativeAuth: true
-                  });
+                  await FirebaseAuthentication.signInWithGoogle();
 
                 const idToken =
-                  result.credential?.idToken;
+                  result.credential?.idToken || null;
 
-                if (!idToken) {
+                const accessToken =
+                  result.credential?.accessToken || null;
+
+                if (!idToken && !accessToken) {
                   throw new Error(
-                    'O Google não forneceu o token de identificação.'
+                    'O Google não forneceu uma credencial válida.'
                   );
                 }
 
                 const credential =
-                  GoogleAuthProvider.credential(idToken);
+                  GoogleAuthProvider.credential(
+                    idToken,
+                    accessToken
+                  );
 
                 await signInWithCredential(
                   auth,
@@ -217,8 +254,6 @@ jobs:
                 'Código: ' + details.code + '\\n\\n' +
                 'Mensagem: ' + details.message
               );
-
-              throw error;
             }
           };
 
@@ -238,7 +273,6 @@ jobs:
               1
           )
 
-          # Alterar o botão da tela inicial.
           login_view_pattern = re.compile(
               r"const handleLogin = async \(\) => \{\s*"
               r"const provider = new GoogleAuthProvider\(\);\s*"
@@ -264,7 +298,6 @@ jobs:
                   "não foi encontrado."
               )
 
-          # Alterar o segundo botão de login existente no aplicativo.
           google_login_pattern = re.compile(
               r"const handleGoogleLogin = async \(\) => \{\s*"
               r"const provider = new GoogleAuthProvider\(\);\s*"
@@ -290,7 +323,6 @@ jobs:
                   "não foi encontrado."
               )
 
-          # Encerrar sessão nativa e sessão Firebase JavaScript.
           sign_out_pattern = re.compile(
               r"const handleSignOut\s*=\s*"
               r"\(\)\s*=>\s*signOut\(auth\);"
@@ -327,95 +359,11 @@ jobs:
               encoding="utf-8"
           )
 
-          # Configurar persistência da sessão Firebase no Android.
-          firebase_path = Path("src/lib/firebase.ts")
-
-          if not firebase_path.exists():
-              raise SystemExit(
-                  "ERRO: src/lib/firebase.ts não foi encontrado."
-              )
-
-          firebase_text = firebase_path.read_text(
-              encoding="utf-8"
-          )
-
-          firebase_import_pattern = re.compile(
-              r"import\s*\{\s*getAuth\s*\}\s*"
-              r"from\s*['\"]firebase/auth['\"]\s*;"
-          )
-
-          new_firebase_import = """import {
-            getAuth,
-            indexedDBLocalPersistence,
-            initializeAuth
-          } from 'firebase/auth';
-          import { Capacitor } from '@capacitor/core';"""
-
-          firebase_text, firebase_import_count = (
-              firebase_import_pattern.subn(
-                  new_firebase_import,
-                  firebase_text,
-                  count=1
-              )
-          )
-
-          if firebase_import_count != 1:
-              raise SystemExit(
-                  "ERRO: import getAuth não foi encontrado "
-                  "em firebase.ts."
-              )
-
-          auth_export_pattern = re.compile(
-              r"export\s+const\s+auth\s*=\s*"
-              r"getAuth\(app\)\s*;"
-          )
-
-          new_auth_export = """export const auth =
-            Capacitor.isNativePlatform()
-              ? initializeAuth(app, {
-                  persistence: indexedDBLocalPersistence
-                })
-              : getAuth(app);"""
-
-          firebase_text, auth_export_count = (
-              auth_export_pattern.subn(
-                  new_auth_export,
-                  firebase_text,
-                  count=1
-              )
-          )
-
-          if auth_export_count != 1:
-              raise SystemExit(
-                  "ERRO: inicialização do Firebase Auth "
-                  "não foi encontrada."
-              )
-
-          firebase_path.write_text(
-              firebase_text,
-              encoding="utf-8"
-          )
-
-          print("Import Firebase Auth atualizado.")
-          print(
-              "Login inicial atualizado:",
-              login_view_count
-          )
-          print(
-              "Segundo login atualizado:",
-              google_login_count
-          )
-          print(
-              "Função de sair atualizada:",
-              sign_out_count
-          )
-          print(
-              "Persistência Firebase configurada:",
-              auth_export_count
-          )
-          print(
-              "Login Google Android adaptado com sucesso."
-          )
+          print("Import do Firebase Auth atualizado.")
+          print("Login inicial atualizado:", login_view_count)
+          print("Segundo login atualizado:", google_login_count)
+          print("Função de sair atualizada:", sign_out_count)
+          print("Login Google Android adaptado com sucesso.")
           PY
 
       - name: Compilar aplicativo web
@@ -444,22 +392,39 @@ jobs:
 
           if not variables_path.exists():
               raise SystemExit(
-                  "ERRO: android/variables.gradle "
-                  "não foi encontrado."
+                  "ERRO: android/variables.gradle não foi encontrado."
               )
 
           variables_text = variables_path.read_text(
               encoding="utf-8"
           )
 
-          if "rgcfaIncludeGoogle" not in variables_text:
-              variables_text += """
+          additions = []
 
-          ext {
-              rgcfaIncludeGoogle = true
-              androidxCredentialsVersion = '1.3.0'
-          }
-          """
+          if "rgcfaIncludeGoogle" not in variables_text:
+              additions.append(
+                  "    rgcfaIncludeGoogle = true"
+              )
+
+          if "androidxCredentialsVersion" not in variables_text:
+              additions.append(
+                  "    androidxCredentialsVersion = '1.3.0'"
+              )
+
+          if additions:
+              if "ext {" not in variables_text:
+                  raise SystemExit(
+                      "ERRO: bloco ext não encontrado "
+                      "em variables.gradle."
+                  )
+
+              insertion = "ext {\n" + "\n".join(additions)
+
+              variables_text = variables_text.replace(
+                  "ext {",
+                  insertion,
+                  1
+              )
 
               variables_path.write_text(
                   variables_text,
@@ -474,6 +439,49 @@ jobs:
           npx cap update android
           npx cap sync android
 
+      - name: Verificar plugin dentro do Android
+        run: |
+          PLUGIN_FILE="android/app/src/main/assets/capacitor.plugins.json"
+
+          if [ ! -f "$PLUGIN_FILE" ]; then
+            PLUGIN_FILE=$(find android \
+              -type f \
+              -name "capacitor.plugins.json" \
+              | head -n 1)
+          fi
+
+          if [ -z "$PLUGIN_FILE" ] || [ ! -f "$PLUGIN_FILE" ]; then
+            echo "ERRO: capacitor.plugins.json não foi encontrado."
+            exit 1
+          fi
+
+          echo "Arquivo de plugins:"
+          echo "$PLUGIN_FILE"
+          cat "$PLUGIN_FILE"
+
+          if ! grep -q \
+            '"pkg": "@capacitor-firebase/authentication"' \
+            "$PLUGIN_FILE"; then
+            echo "ERRO: Firebase Authentication não entrou no APK."
+            exit 1
+          fi
+
+          if ! grep -q \
+            "capacitor-firebase-authentication" \
+            android/capacitor.settings.gradle; then
+            echo "ERRO: módulo Android do Firebase não foi registrado."
+            exit 1
+          fi
+
+          if ! grep -q \
+            "capacitor-firebase-authentication" \
+            android/app/capacitor.build.gradle; then
+            echo "ERRO: dependência Android do Firebase está ausente."
+            exit 1
+          fi
+
+          echo "FirebaseAuthentication incorporado ao Android."
+
       - name: Verificar configuração Firebase Android
         run: |
           if [ ! -f "android/app/google-services.json" ]; then
@@ -481,14 +489,33 @@ jobs:
             exit 1
           fi
 
-          grep -q '"com.jsonia.appeden"' \
-            android/app/google-services.json
+          if ! grep -q \
+            '"com.jsonia.appeden"' \
+            android/app/google-services.json; then
+            echo "ERRO: pacote Android incorreto no Firebase."
+            exit 1
+          fi
 
-          grep -q "rgcfaIncludeGoogle" \
-            android/variables.gradle
+          if ! grep -q \
+            "rgcfaIncludeGoogle" \
+            android/variables.gradle; then
+            echo "ERRO: rgcfaIncludeGoogle não foi configurado."
+            exit 1
+          fi
 
-          grep -q "androidxCredentialsVersion" \
-            android/variables.gradle
+          if ! grep -q \
+            "androidxCredentialsVersion" \
+            android/variables.gradle; then
+            echo "ERRO: androidxCredentialsVersion está ausente."
+            exit 1
+          fi
+
+          if ! grep -q \
+            '"google.com"' \
+            android/app/src/main/assets/capacitor.config.json; then
+            echo "ERRO: provedor Google ausente na configuração."
+            exit 1
+          fi
 
           echo "Configuração Firebase Android confirmada."
 
