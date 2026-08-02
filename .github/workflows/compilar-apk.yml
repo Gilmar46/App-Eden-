@@ -1,0 +1,93 @@
+name: Compilar APK App Eden
+
+on:
+  workflow_dispatch:
+
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  compilar-apk:
+    name: Gerar APK Android
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Baixar código do repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Configurar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Instalar dependências do App Éden
+        run: npm ci
+
+      - name: Instalar Capacitor Android
+        run: |
+          npm install --no-save \
+            @capacitor/core@8 \
+            @capacitor/cli@8 \
+            @capacitor/android@8
+
+      - name: Criar configuração Android
+        run: |
+          cat > capacitor.config.ts <<'EOF'
+          import type { CapacitorConfig } from '@capacitor/cli';
+
+          const config: CapacitorConfig = {
+            appId: 'com.jsonia.appeden',
+            appName: 'App Éden',
+            webDir: 'dist',
+            server: {
+              androidScheme: 'https'
+            },
+            android: {
+              allowMixedContent: false
+            }
+          };
+
+          export default config;
+          EOF
+
+      - name: Compilar aplicativo web
+        run: npm run build
+
+      - name: Criar projeto Android
+        run: |
+          rm -rf android
+          npx cap add android
+          npx cap sync android
+
+      - name: Compilar APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Preparar APK para download
+        run: |
+          mkdir -p saida
+          cp android/app/build/outputs/apk/debug/app-debug.apk \
+             saida/App-Eden-debug.apk
+
+      - name: Publicar APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: App-Eden-APK
+          path: saida/App-Eden-debug.apk
+          retention-days: 30
+          if-no-files-found: error
