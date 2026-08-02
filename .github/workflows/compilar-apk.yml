@@ -1,708 +1,318 @@
-name: Compilar APK Igreja Batista Éden
+from pathlib import Path
+import re
+import shutil
+import sys
 
-on:
-  workflow_dispatch:
+APP_PATH = Path("src/App.tsx")
+PUBLIC_DIR = Path("public")
+CONFIG_PATH = Path("capacitor.config.ts")
+INDEX_PATH = Path("index.html")
+STRINGS_PATH = Path("android/app/src/main/res/values/strings.xml")
+LOGO_SOURCE = Path("igreja-batista-eden-logo.png")
 
-  push:
-    branches:
-      - main
 
-permissions:
-  contents: read
+def copy_logo_assets():
+    if not LOGO_SOURCE.exists():
+        raise SystemExit(
+            "ERRO: coloque o arquivo igreja-batista-eden-logo.png na raiz do projeto."
+        )
 
-jobs:
-  compilar-apk:
-    name: Gerar APK Igreja Batista Éden
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
+    PUBLIC_DIR.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(LOGO_SOURCE, PUBLIC_DIR / "igreja-batista-eden-logo.png")
+    shutil.copyfile(LOGO_SOURCE, PUBLIC_DIR / "favicon.png")
+    shutil.copyfile(LOGO_SOURCE, PUBLIC_DIR / "apple-touch-icon.png")
+    print("Logo público atualizado.")
 
-    steps:
-      - name: Baixar código do repositório
-        uses: actions/checkout@v4
 
-      - name: Configurar Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
+def patch_android_assets_only():
+    if not LOGO_SOURCE.exists():
+        raise SystemExit(
+            "ERRO: coloque o arquivo igreja-batista-eden-logo.png na raiz do projeto."
+        )
 
-      - name: Configurar Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "21"
+    icon_paths = [
+        "android/app/src/main/res/mipmap-mdpi/ic_launcher.png",
+        "android/app/src/main/res/mipmap-hdpi/ic_launcher.png",
+        "android/app/src/main/res/mipmap-xhdpi/ic_launcher.png",
+        "android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png",
+        "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
+        "android/app/src/main/res/mipmap-mdpi/ic_launcher_round.png",
+        "android/app/src/main/res/mipmap-hdpi/ic_launcher_round.png",
+        "android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png",
+        "android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png",
+        "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png",
+    ]
 
-      - name: Instalar dependências do aplicativo
-        run: npm ci
+    for relative_path in icon_paths:
+        path = Path(relative_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(LOGO_SOURCE, path)
 
-      - name: Instalar e registrar Capacitor e login Google
-        run: |
-          npm install --save-exact \
-            @capacitor/core@8 \
-            @capacitor/android@8 \
-            @capacitor-firebase/authentication@8
+    if STRINGS_PATH.exists():
+        strings = STRINGS_PATH.read_text(encoding="utf-8")
+        strings = re.sub(
+            r"(<string name=\"app_name\">)([^<]+)(</string>)",
+            r"\1Igreja Batista Éden\3",
+            strings,
+            count=1,
+        )
+        STRINGS_PATH.write_text(strings, encoding="utf-8")
 
-          npm install --save-dev --save-exact \
-            @capacitor/cli@8
+    print("Ícone e nome Android atualizados.")
 
-          node --input-type=module <<'NODE'
-          import fs from 'node:fs';
 
-          const packageJson = JSON.parse(
-            fs.readFileSync('package.json', 'utf8')
-          );
+def safe_replace(text: str, old: str, new: str) -> str:
+    return text.replace(old, new) if old in text else text
 
-          const dependencies = [
-            '@capacitor/core',
-            '@capacitor/android',
-            '@capacitor-firebase/authentication'
-          ];
 
-          for (const dependency of dependencies) {
-            if (!packageJson.dependencies?.[dependency]) {
-              console.error(
-                `ERRO: ${dependency} não foi registrado no package.json.`
-              );
-              process.exit(1);
-            }
-          }
+def ensure_visible_names(text: str) -> str:
+    replacements = [
+        ("'Comunidade Vida'", "'Igreja Batista Éden'"),
+        ('"Comunidade Vida"', '"Igreja Batista Éden"'),
+        (">Comunidade Vida<", ">Igreja Batista Éden<"),
+        ("'Unidade Viva'", "'Igreja Batista Éden'"),
+        ('"Unidade Viva"', '"Igreja Batista Éden"'),
+        (">Unidade Viva<", ">Igreja Batista Éden<"),
+    ]
+    for old, new in replacements:
+        text = text.replace(old, new)
+    return text
 
-          if (!packageJson.devDependencies?.['@capacitor/cli']) {
-            console.error(
-              'ERRO: @capacitor/cli não foi registrado no package.json.'
-            );
-            process.exit(1);
-          }
 
-          console.log(
-            'Capacitor e Firebase Authentication registrados corretamente.'
-          );
-          NODE
+def ensure_logo_fill(text: str) -> str:
+    text = text.replace("object-contain", "object-cover scale-[1.18]")
+    text = text.replace(
+        "<UnidadeVivaMark className=\"w-20 h-20 sm:w-24 sm:h-24 drop-shadow-md\" />",
+        "<UnidadeVivaMark className=\"w-28 h-28 sm:w-32 sm:h-32 drop-shadow-md\" />",
+    )
+    text = text.replace(
+        "<UnidadeVivaMark className=\"w-20 h-20\" />",
+        "<UnidadeVivaMark className=\"w-28 h-28\" />",
+    )
+    text = text.replace(
+        "<UnidadeVivaMark className=\"w-24 h-24\" />",
+        "<UnidadeVivaMark className=\"w-28 h-28\" />",
+    )
+    return text
 
-      - name: Criar configuração Android
-        run: |
-          cat > capacitor.config.ts <<'EOF'
-          /// <reference types="@capacitor-firebase/authentication" />
 
-          import type { CapacitorConfig } from '@capacitor/cli';
+def ensure_view_type(text: str) -> str:
+    view_match = re.search(r"type View = (?P<views>[^;]+);", text)
+    if not view_match:
+        raise SystemExit("ERRO: tipo View não encontrado em src/App.tsx.")
 
-          const config: CapacitorConfig = {
-            appId: 'com.jsonia.appeden',
-            appName: 'Igreja Batista Éden',
-            webDir: 'dist',
+    views = view_match.group("views")
+    if "'bulletin-program'" not in views:
+        views += " | 'bulletin-program'"
+        text = text[:view_match.start("views")] + views + text[view_match.end("views"):]
+    return text
 
-            server: {
-              androidScheme: 'https'
-            },
 
-            android: {
-              allowMixedContent: false
-            },
+def ensure_bulletin_state(text: str) -> str:
+    if "const [bulletinPrelude" in text:
+        return text
 
-            plugins: {
-              FirebaseAuthentication: {
-                skipNativeAuth: true,
-                providers: ['google.com']
-              }
-            }
-          };
+    marker = "  const [activeView, setActiveView] = useState<View>('home');"
+    if marker not in text:
+        raise SystemExit("ERRO: estado activeView não encontrado.")
 
-          export default config;
-          EOF
+    insertion = """
+  const [bulletinPrelude, setBulletinPrelude] = useState(() => localStorage.getItem('eden-bulletin-prelude') || '');
+  const [bulletinGreeting, setBulletinGreeting] = useState(() => localStorage.getItem('eden-bulletin-greeting') || '');
+  const [bulletinHymn, setBulletinHymn] = useState(() => localStorage.getItem('eden-bulletin-hymn') || '');
+  const [bulletinReading, setBulletinReading] = useState(() => localStorage.getItem('eden-bulletin-reading') || '');
+  const [bulletinPraise, setBulletinPraise] = useState(() => localStorage.getItem('eden-bulletin-praise') || '');
+  const [bulletinOffering, setBulletinOffering] = useState(() => localStorage.getItem('eden-bulletin-offering') || '');
+  const [bulletinMessage, setBulletinMessage] = useState(() => localStorage.getItem('eden-bulletin-message') || '');
+  const [bulletinBlessing, setBulletinBlessing] = useState(() => localStorage.getItem('eden-bulletin-blessing') || '');
 
-      - name: Adaptar login Google para Android
-        run: |
-          python3 <<'PY'
-          from pathlib import Path
-          import re
+  const saveBulletinProgram = () => {
+    localStorage.setItem('eden-bulletin-prelude', bulletinPrelude);
+    localStorage.setItem('eden-bulletin-greeting', bulletinGreeting);
+    localStorage.setItem('eden-bulletin-hymn', bulletinHymn);
+    localStorage.setItem('eden-bulletin-reading', bulletinReading);
+    localStorage.setItem('eden-bulletin-praise', bulletinPraise);
+    localStorage.setItem('eden-bulletin-offering', bulletinOffering);
+    localStorage.setItem('eden-bulletin-message', bulletinMessage);
+    localStorage.setItem('eden-bulletin-blessing', bulletinBlessing);
+    window.alert('Programação do culto salva com sucesso.');
+  };
+"""
 
-          app_path = Path("src/App.tsx")
+    return text.replace(marker, marker + insertion, 1)
 
-          if not app_path.exists():
-              raise SystemExit(
-                  "ERRO: src/App.tsx não foi encontrado."
-              )
 
-          text = app_path.read_text(encoding="utf-8")
-
-          auth_import_pattern = re.compile(
-              r"import\s*\{[^}]*\}\s*"
-              r"from\s*['\"]firebase/auth['\"]\s*;",
-              re.DOTALL
-          )
-
-          auth_match = auth_import_pattern.search(text)
-
-          if not auth_match:
-              raise SystemExit(
-                  "ERRO: import do Firebase Auth não foi encontrado."
-              )
-
-          old_auth_import = auth_match.group(0)
-
-          required_names = [
-              "signInWithPopup",
-              "GoogleAuthProvider",
-              "signOut",
-              "onAuthStateChanged",
-              "FirebaseUser"
-          ]
-
-          for name in required_names:
-              if name not in old_auth_import:
-                  raise SystemExit(
-                      f"ERRO: {name} não foi encontrado "
-                      "no import do Firebase Auth."
-                  )
-
-          new_auth_import = """import {
-            signInWithPopup,
-            signInWithCredential,
-            GoogleAuthProvider,
-            signOut,
-            onAuthStateChanged,
-            User as FirebaseUser
-          } from 'firebase/auth';
-          import { Capacitor } from '@capacitor/core';
-          import {
-            FirebaseAuthentication
-          } from '@capacitor-firebase/authentication';"""
-
-          text = (
-              text[:auth_match.start()]
-              + new_auth_import
-              + text[auth_match.end():]
-          )
-
-          helper = """
-          const describeGoogleAuthError = (error: unknown) => {
-            const authError = error as {
-              code?: string;
-              message?: string;
-            };
-
-            return {
-              code: authError?.code || 'sem código',
-              message:
-                authError?.message ||
-                String(error) ||
-                'Erro desconhecido'
-            };
-          };
-
-          const signInWithGoogleCompat = async () => {
-            try {
-              if (Capacitor.isNativePlatform()) {
-                if (
-                  !Capacitor.isPluginAvailable(
-                    'FirebaseAuthentication'
-                  )
-                ) {
-                  throw new Error(
-                    'O plugin FirebaseAuthentication não está ' +
-                    'disponível neste APK.'
-                  );
-                }
-
-                const result =
-                  await FirebaseAuthentication.signInWithGoogle();
-
-                const idToken =
-                  result.credential?.idToken || null;
-
-                const accessToken =
-                  result.credential?.accessToken || null;
-
-                if (!idToken && !accessToken) {
-                  throw new Error(
-                    'O Google não forneceu uma credencial válida.'
-                  );
-                }
-
-                const credential =
-                  GoogleAuthProvider.credential(
-                    idToken,
-                    accessToken
-                  );
-
-                await signInWithCredential(
-                  auth,
-                  credential
+def ensure_bulletin_tile(text: str) -> str:
+    old_snippet = """          {
+            label: 'Boletim',
+            icon: FileText,
+            background:
+              'bg-gradient-to-br from-[#EDF5FD] to-[#DFECF8]',
+            iconColor: 'text-[#163D68]',
+            onClick: () => {
+              if (bulletins[0]) {
+                setSelectedBulletin(bulletins[0]);
+              } else {
+                window.alert(
+                  'Ainda não há boletim publicado.'
                 );
-
-                return;
               }
-
-              const provider =
-                new GoogleAuthProvider();
-
-              await signInWithPopup(
-                auth,
-                provider
-              );
-            } catch (error) {
-              const details =
-                describeGoogleAuthError(error);
-
-              console.error(
-                'Erro completo do login Google:',
-                error
-              );
-
-              window.alert(
-                'Falha no login Google.\\n\\n' +
-                'Código: ' + details.code + '\\n\\n' +
-                'Mensagem: ' + details.message
-              );
             }
-          };
-
-          """
-
-          marker = "// --- Main App ---"
-
-          if marker not in text:
-              raise SystemExit(
-                  "ERRO: marcador principal do aplicativo "
-                  "não foi encontrado."
-              )
-
-          text = text.replace(
-              marker,
-              helper + marker,
-              1
-          )
-
-          login_view_pattern = re.compile(
-              r"const handleLogin = async \(\) => \{\s*"
-              r"const provider = new GoogleAuthProvider\(\);\s*"
-              r"try \{\s*"
-              r"await signInWithPopup\(auth,\s*provider\);"
-          )
-
-          login_view_replacement = """const handleLogin = async () => {
-              try {
-                await signInWithGoogleCompat();"""
-
-          text, login_view_count = (
-              login_view_pattern.subn(
-                  login_view_replacement,
-                  text,
-                  count=1
-              )
-          )
-
-          if login_view_count != 1:
-              raise SystemExit(
-                  "ERRO: botão de login da tela inicial "
-                  "não foi encontrado."
-              )
-
-          google_login_pattern = re.compile(
-              r"const handleGoogleLogin = async \(\) => \{\s*"
-              r"const provider = new GoogleAuthProvider\(\);\s*"
-              r"try \{\s*"
-              r"await signInWithPopup\(auth,\s*provider\);"
-          )
-
-          google_login_replacement = """const handleGoogleLogin = async () => {
-              try {
-                await signInWithGoogleCompat();"""
-
-          text, google_login_count = (
-              google_login_pattern.subn(
-                  google_login_replacement,
-                  text,
-                  count=1
-              )
-          )
-
-          if google_login_count != 1:
-              raise SystemExit(
-                  "ERRO: segundo botão de login Google "
-                  "não foi encontrado."
-              )
-
-          sign_out_pattern = re.compile(
-              r"const handleSignOut\s*=\s*"
-              r"\(\)\s*=>\s*signOut\(auth\);"
-          )
-
-          new_sign_out = """const handleSignOut = async () => {
-              if (Capacitor.isNativePlatform()) {
-                try {
-                  await FirebaseAuthentication.signOut();
-                } catch (error) {
-                  console.warn(
-                    'Não foi possível encerrar a sessão nativa:',
-                    error
-                  );
-                }
-              }
-
-              await signOut(auth);
-            };"""
-
-          text, sign_out_count = sign_out_pattern.subn(
-              new_sign_out,
-              text,
-              count=1
-          )
-
-          if sign_out_count != 1:
-              raise SystemExit(
-                  "ERRO: função de sair não foi encontrada."
-              )
-
-          app_path.write_text(
-              text,
-              encoding="utf-8"
-          )
-
-          print("Import do Firebase Auth atualizado.")
-          print("Login inicial atualizado:", login_view_count)
-          print("Segundo login atualizado:", google_login_count)
-          print("Função de sair atualizada:", sign_out_count)
-          print("Login Google Android adaptado com sucesso.")
-          PY
-
-      - name: Aplicar visual Igreja Batista Éden
-        run: |
-          if [ ! -f "aplicar-unidade-viva.py" ]; then
-            echo "ERRO: aplicar-unidade-viva.py não foi encontrado na raiz."
-            exit 1
-          fi
-
-          if [ ! -f "aplicar-igreja-batista-eden-v2.py" ]; then
-            echo "ERRO: aplicar-igreja-batista-eden-v2.py não foi encontrado na raiz."
-            exit 1
-          fi
-
-          python3 aplicar-unidade-viva.py
-
-          # Corrigir automaticamente a versão v2 antes de executá-la.
-          # A versão enviada ao repositório contém barras duplicadas no regex
-          # e três nomes de ícones que não existem no import atual do App.tsx.
-          python3 <<'PY'
-          from pathlib import Path
-
-          script_path = Path("aplicar-igreja-batista-eden-v2.py")
-          script_text = script_path.read_text(encoding="utf-8")
-
-          replacements = [
-              (
-                  '    r"(?:^|\\\\n)\\\\s*const\\\\s+handleCreateMember\\\\s*=\\\\s*async\\\\s*"',
-                  '    r"(?:^|\\n)\\s*const\\s+handleCreateMember\\s*=\\s*async\\s*"'
-              ),
-              (
-                  '    r"\\\\(e:\\\\s*React\\\\.FormEvent\\\\)\\\\s*=>\\\\s*\\\\{.*?"',
-                  '    r"\\(e:\\s*React\\.FormEvent\\)\\s*=>\\s*\\{.*?"'
-              ),
-              (
-                  '    r"(?:^|\\\\n)\\\\s*const\\\\s+handleFetchNews\\\\s*=\\\\s*async"',
-                  '    r"(?:^|\\n)\\s*const\\s+handleFetchNews\\s*=\\s*async"'
-              ),
-              ("icon: HandHeart,", "icon: Heart,"),
-              ("icon: Phone,", "icon: MessageCircle,"),
-              ("icon: Globe2,", "icon: Languages,")
-          ]
-
-          for old, new in replacements:
-              if old in script_text:
-                  script_text = script_text.replace(old, new, 1)
-              elif new not in script_text:
-                  raise SystemExit(
-                      "ERRO: não foi possível corrigir um trecho do script v2."
-                  )
-
-          compile(
-              script_text,
-              str(script_path),
-              "exec"
-          )
-
-          script_path.write_text(
-              script_text,
-              encoding="utf-8"
-          )
-
-          print("Script Igreja Batista Éden v2 corrigido e validado.")
-          PY
-
-          python3 aplicar-igreja-batista-eden-v2.py
-
-          if [ ! -f "public/igreja-batista-eden-logo.png" ]; then
-            echo "ERRO: o logotipo da Igreja Batista Éden não foi criado."
-            exit 1
-          fi
-
-          grep -q "Igreja Batista Éden" src/App.tsx
-          grep -q "case 'attendance':" src/App.tsx
-          grep -q "Marcar Presença" src/App.tsx
-          grep -q "Notícias de Fé" src/App.tsx
-          grep -q "Ministérios" src/App.tsx
-          grep -q "Eventos" src/App.tsx
-          grep -q "Pregações" src/App.tsx
-
-          echo "Visual e funções da Igreja Batista Éden aplicados."
-
-      - name: Compilar aplicativo web
-        run: npm run build
-
-      - name: Criar projeto Android
-        run: |
-          rm -rf android
-
-          npx cap add android
-
-          if [ ! -f "google-services.json" ]; then
-            echo "ERRO: google-services.json não foi encontrado."
-            exit 1
-          fi
-
-          cp google-services.json \
-            android/app/google-services.json
-
-          python3 <<'PY'
-          from pathlib import Path
-
-          variables_path = Path(
-              "android/variables.gradle"
-          )
-
-          if not variables_path.exists():
-              raise SystemExit(
-                  "ERRO: android/variables.gradle não foi encontrado."
-              )
-
-          variables_text = variables_path.read_text(
-              encoding="utf-8"
-          )
-
-          additions = []
-
-          if "rgcfaIncludeGoogle" not in variables_text:
-              additions.append(
-                  "    rgcfaIncludeGoogle = true"
-              )
-
-          if "androidxCredentialsVersion" not in variables_text:
-              additions.append(
-                  "    androidxCredentialsVersion = '1.3.0'"
-              )
-
-          if additions:
-              if "ext {" not in variables_text:
-                  raise SystemExit(
-                      "ERRO: bloco ext não encontrado "
-                      "em variables.gradle."
-                  )
-
-              insertion = "ext {\n" + "\n".join(additions)
-
-              variables_text = variables_text.replace(
-                  "ext {",
-                  insertion,
-                  1
-              )
-
-              variables_path.write_text(
-                  variables_text,
-                  encoding="utf-8"
-              )
-
-          print(
-              "Dependências nativas do Google configuradas."
-          )
-          PY
-
-          npx cap update android
-          npx cap sync android
-
-          python3 aplicar-igreja-batista-eden-v2.py --android-only
-
-      - name: Verificar plugin dentro do Android
-        run: |
-          PLUGIN_FILE="android/app/src/main/assets/capacitor.plugins.json"
-
-          if [ ! -f "$PLUGIN_FILE" ]; then
-            PLUGIN_FILE=$(find android \
-              -type f \
-              -name "capacitor.plugins.json" \
-              | head -n 1)
-          fi
-
-          if [ -z "$PLUGIN_FILE" ] || [ ! -f "$PLUGIN_FILE" ]; then
-            echo "ERRO: capacitor.plugins.json não foi encontrado."
-            exit 1
-          fi
-
-          echo "Arquivo de plugins:"
-          echo "$PLUGIN_FILE"
-          cat "$PLUGIN_FILE"
-
-          if ! grep -q \
-            "@capacitor-firebase/authentication" \
-            "$PLUGIN_FILE"; then
-            echo "ERRO: Firebase Authentication não entrou no APK."
-            exit 1
-          fi
-
-          if ! grep -q \
-            "capacitor-firebase-authentication" \
-            android/capacitor.settings.gradle; then
-            echo "ERRO: módulo Android do Firebase não foi registrado."
-            exit 1
-          fi
-
-          if ! grep -q \
-            "capacitor-firebase-authentication" \
-            android/app/capacitor.build.gradle; then
-            echo "ERRO: dependência Android do Firebase está ausente."
-            exit 1
-          fi
-
-          echo "FirebaseAuthentication incorporado ao Android."
-
-      - name: Verificar configuração Firebase Android
-        run: |
-          if [ ! -f "android/app/google-services.json" ]; then
-            echo "ERRO: google-services.json não foi copiado."
-            exit 1
-          fi
-
-          if ! grep -q \
-            '"com.jsonia.appeden"' \
-            android/app/google-services.json; then
-            echo "ERRO: pacote Android incorreto no Firebase."
-            exit 1
-          fi
-
-          if ! grep -q \
-            "rgcfaIncludeGoogle" \
-            android/variables.gradle; then
-            echo "ERRO: rgcfaIncludeGoogle não foi configurado."
-            exit 1
-          fi
-
-          if ! grep -q \
-            "androidxCredentialsVersion" \
-            android/variables.gradle; then
-            echo "ERRO: androidxCredentialsVersion está ausente."
-            exit 1
-          fi
-
-          if ! grep -q \
-            '"google.com"' \
-            android/app/src/main/assets/capacitor.config.json; then
-            echo "ERRO: provedor Google ausente na configuração."
-            exit 1
-          fi
-
-          echo "Configuração Firebase Android confirmada."
-
-      - name: Restaurar chave de assinatura
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
-          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
-            echo "ERRO: Secret ANDROID_KEYSTORE_BASE64 ausente."
-            exit 1
-          fi
-
-          if [ -z "$ANDROID_KEYSTORE_PASSWORD" ]; then
-            echo "ERRO: Secret ANDROID_KEYSTORE_PASSWORD ausente."
-            exit 1
-          fi
-
-          if [ -z "$ANDROID_KEY_ALIAS" ]; then
-            echo "ERRO: Secret ANDROID_KEY_ALIAS ausente."
-            exit 1
-          fi
-
-          if [ -z "$ANDROID_KEY_PASSWORD" ]; then
-            echo "ERRO: Secret ANDROID_KEY_PASSWORD ausente."
-            exit 1
-          fi
-
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" \
-            | base64 --decode \
-            > android/app/app-eden-upload.jks
-
-          keytool -list \
-            -keystore android/app/app-eden-upload.jks \
-            -storepass "$ANDROID_KEYSTORE_PASSWORD" \
-            -alias "$ANDROID_KEY_ALIAS" \
-            > /dev/null
-
-          echo "Chave de assinatura restaurada."
-
-      - name: Configurar Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Compilar APK assinado
-        working-directory: android
-        env:
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
-          chmod +x gradlew
-
-          ./gradlew assembleRelease \
-            --no-daemon \
-            --stacktrace \
-            "-Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/android/app/app-eden-upload.jks" \
-            "-Pandroid.injected.signing.store.password=$ANDROID_KEYSTORE_PASSWORD" \
-            "-Pandroid.injected.signing.key.alias=$ANDROID_KEY_ALIAS" \
-            "-Pandroid.injected.signing.key.password=$ANDROID_KEY_PASSWORD"
-
-      - name: Verificar e preparar APK
-        run: |
-          mkdir -p saida
-
-          APK_ORIGINAL=$(find \
-            android/app/build/outputs/apk/release \
-            -maxdepth 1 \
-            -type f \
-            -name "*.apk" \
-            | head -n 1)
-
-          if [ -z "$APK_ORIGINAL" ]; then
-            echo "ERRO: APK não foi encontrado."
-            exit 1
-          fi
-
-          BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" \
-            -mindepth 1 \
-            -maxdepth 1 \
-            -type d \
-            | sort -V \
-            | tail -n 1)
-
-          if [ -z "$BUILD_TOOLS" ]; then
-            echo "ERRO: Android Build Tools não encontrado."
-            exit 1
-          fi
-
-          "$BUILD_TOOLS/apksigner" verify \
-            --verbose \
-            --print-certs \
-            "$APK_ORIGINAL"
-
-          cp "$APK_ORIGINAL" \
-            saida/Igreja-Batista-Eden-release.apk
-
-          echo "APK Igreja Batista Éden assinado e verificado com sucesso."
-
-      - name: Publicar APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: Igreja-Batista-Eden-APK-Assinado
-          path: saida/Igreja-Batista-Eden-release.apk
-          retention-days: 30
-          if-no-files-found: error
-          
+          },"""
+
+    new_snippet = """          {
+            label: 'Boletim',
+            icon: FileText,
+            background:
+              'bg-gradient-to-br from-[#EDF5FD] to-[#DFECF8]',
+            iconColor: 'text-[#163D68]',
+            onClick: () => setActiveView('bulletin-program')
+          },"""
+
+    text = safe_replace(text, old_snippet, new_snippet)
+    text = safe_replace(
+        text,
+        "window.alert(\n                  'Ainda não há boletim publicado.'\n                );",
+        "setActiveView('bulletin-program');",
+    )
+    return text
+
+
+def ensure_bulletin_case(text: str) -> str:
+    if "case 'bulletin-program':" in text:
+        return text
+
+    marker = "      case 'attendance':"
+    if marker not in text:
+        raise SystemExit("ERRO: ponto de inserção da tela do boletim não encontrado.")
+
+    bulletin_case = """
+      case 'bulletin-program':
+        return (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="pb-28 max-w-3xl mx-auto px-4 pt-8"
+          >
+            <div className="flex items-center space-x-4 mb-7">
+              <button
+                onClick={() => setActiveView('home')}
+                className="p-3 bg-white border border-slate-100 rounded-2xl shadow-sm"
+                aria-label="Voltar ao início"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <div>
+                <h1 className="text-2xl font-black text-[#0A3158]">
+                  Programação do Culto
+                </h1>
+                <p className="text-xs font-semibold text-slate-500">
+                  Preencha os campos do boletim conforme a ordem do culto.
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-[30px] border border-[#D9E8F3] bg-white shadow-xl shadow-blue-900/5 overflow-hidden">
+              <div className="bg-[#0A3158] px-5 py-5 text-center border-b-4 border-[#DAB45B]">
+                <h2 className="text-[clamp(1.5rem,5vw,2.2rem)] font-black tracking-wide text-white uppercase">
+                  Programação do Culto
+                </h2>
+              </div>
+
+              <div className="p-5 sm:p-7 space-y-4 bg-[#FFFEFB]">
+                <label className="block">
+                  <span className="block text-sm font-black text-[#0A3158] mb-2">Prelúdio</span>
+                  <input value={bulletinPrelude} onChange={e => setBulletinPrelude(e.target.value)} className="w-full rounded-2xl border border-[#D8E5F0] bg-white px-4 py-3 text-sm font-semibold text-slate-700" placeholder="Digite aqui" />
+                </label>
+                <label className="block">
+                  <span className="block text-sm font-black text-[#0A3158] mb-2">Saudação e Oração</span>
+                  <input value={bulletinGreeting} onChange={e => setBulletinGreeting(e.target.value)} className="w-full rounded-2xl border border-[#D8E5F0] bg-white px-4 py-3 text-sm font-semibold text-slate-700" placeholder="Digite aqui" />
+                </label>
+                <label className="block">
+                  <span className="block text-sm font-black text-[#0A3158] mb-2">Hino Congregacional</span>
+                  <input value={bulletinHymn} onChange={e => setBulletinHymn(e.target.value)} className="w-full rounded-2xl border border-[#D8E5F0] bg-white px-4 py-3 text-sm font-semibold text-slate-700" placeholder="Digite aqui" />
+                </label>
+                <label className="block">
+                  <span className="block text-sm font-black text-[#0A3158] mb-2">Leitura Bíblica</span>
+                  <input value={bulletinReading} onChange={e => setBulletinReading(e.target.value)} className="w-full rounded-2xl border border-[#D8E5F0] bg-white px-4 py-3 text-sm font-semibold text-slate-700" placeholder="Digite aqui" />
+                </label>
+                <label className="block">
+                  <span className="block text-sm font-black text-[#0A3158] mb-2">Momento de Louvor</span>
+                  <input value={bulletinPraise} onChange={e => setBulletinPraise(e.target.value)} className="w-full rounded-2xl border border-[#D8E5F0] bg-white px-4 py-3 text-sm font-semibold text-slate-700" placeholder="Digite aqui" />
+                </label>
+                <label className="block">
+                  <span className="block text-sm font-black text-[#0A3158] mb-2">Dízimos e Ofertas</span>
+                  <input value={bulletinOffering} onChange={e => setBulletinOffering(e.target.value)} className="w-full rounded-2xl border border-[#D8E5F0] bg-white px-4 py-3 text-sm font-semibold text-slate-700" placeholder="Digite aqui" />
+                </label>
+                <label className="block">
+                  <span className="block text-sm font-black text-[#0A3158] mb-2">Mensagem Bíblica</span>
+                  <input value={bulletinMessage} onChange={e => setBulletinMessage(e.target.value)} className="w-full rounded-2xl border border-[#D8E5F0] bg-white px-4 py-3 text-sm font-semibold text-slate-700" placeholder="Digite aqui" />
+                </label>
+                <label className="block">
+                  <span className="block text-sm font-black text-[#0A3158] mb-2">Bênção Final</span>
+                  <input value={bulletinBlessing} onChange={e => setBulletinBlessing(e.target.value)} className="w-full rounded-2xl border border-[#D8E5F0] bg-white px-4 py-3 text-sm font-semibold text-slate-700" placeholder="Digite aqui" />
+                </label>
+                <button
+                  type="button"
+                  onClick={saveBulletinProgram}
+                  className="w-full min-h-[56px] rounded-2xl bg-[#0C5A9D] text-white text-sm font-black tracking-wide"
+                >
+                  SALVAR PROGRAMAÇÃO
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        );
+
+"""
+
+    return text.replace(marker, bulletin_case + marker, 1)
+
+
+def patch_files():
+    copy_logo_assets()
+
+    if not APP_PATH.exists():
+        raise SystemExit("ERRO: src/App.tsx não foi encontrado.")
+
+    text = APP_PATH.read_text(encoding="utf-8").replace("\r\n", "\n").replace("\r", "\n")
+    text = ensure_visible_names(text)
+    text = safe_replace(text, "/unidade-viva-logo.png", "/igreja-batista-eden-logo.png")
+    text = safe_replace(text, "Logotipo Unidade Viva", "Logotipo Igreja Batista Éden")
+    text = ensure_logo_fill(text)
+    text = ensure_view_type(text)
+    text = ensure_bulletin_state(text)
+    text = ensure_bulletin_tile(text)
+    text = ensure_bulletin_case(text)
+    APP_PATH.write_text(text, encoding="utf-8")
+
+    if CONFIG_PATH.exists():
+        config_text = CONFIG_PATH.read_text(encoding="utf-8")
+        config_text = re.sub(
+            r"appName:\s*['\"][^'\"]+['\"]",
+            "appName: 'Igreja Batista Éden'",
+            config_text,
+            count=1,
+        )
+        CONFIG_PATH.write_text(config_text, encoding="utf-8")
+
+    if INDEX_PATH.exists():
+        index_text = INDEX_PATH.read_text(encoding="utf-8")
+        index_text = re.sub(
+            r"<title>.*?</title>",
+            "<title>Igreja Batista Éden</title>",
+            index_text,
+            flags=re.DOTALL,
+        )
+        INDEX_PATH.write_text(index_text, encoding="utf-8")
+
+    print("Nome do aplicativo atualizado para Igreja Batista Éden.")
+    print("Boletim configurado com os campos desejados, sem AVISOS.")
+    print("Logotipo ampliado para reduzir os espaços em branco.")
+
+
+if __name__ == "__main__":
+    if "--android-only" in sys.argv:
+        patch_android_assets_only()
+    else:
+        patch_files()
