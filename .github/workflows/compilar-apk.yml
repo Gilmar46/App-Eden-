@@ -1,4 +1,4 @@
-name: Compilar APK Unidade Viva
+name: Compilar APK Igreja Batista Éden
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   compilar-apk:
-    name: Gerar APK Unidade Viva
+    name: Gerar APK Igreja Batista Éden
     runs-on: ubuntu-latest
     timeout-minutes: 40
 
@@ -88,7 +88,7 @@ jobs:
 
           const config: CapacitorConfig = {
             appId: 'com.jsonia.appeden',
-            appName: 'Unidade Viva',
+            appName: 'Igreja Batista Éden',
             webDir: 'dist',
 
             server: {
@@ -366,36 +366,35 @@ jobs:
           print("Login Google Android adaptado com sucesso.")
           PY
 
-      - name: Aplicar visual Unidade Viva
+      - name: Aplicar visual Igreja Batista Éden
         run: |
           if [ ! -f "aplicar-unidade-viva.py" ]; then
             echo "ERRO: aplicar-unidade-viva.py não foi encontrado na raiz."
             exit 1
           fi
 
+          if [ ! -f "aplicar-igreja-batista-eden.py" ]; then
+            echo "ERRO: aplicar-igreja-batista-eden.py não foi encontrado na raiz."
+            exit 1
+          fi
+
           python3 aplicar-unidade-viva.py
+          python3 aplicar-igreja-batista-eden.py
 
-          if [ ! -f "public/unidade-viva-logo.png" ]; then
-            echo "ERRO: o logotipo Unidade Viva não foi criado."
+          if [ ! -f "public/igreja-batista-eden-logo.png" ]; then
+            echo "ERRO: o logotipo da Igreja Batista Éden não foi criado."
             exit 1
           fi
 
-          if ! grep -q "Unidade Viva" src/App.tsx; then
-            echo "ERRO: o nome Unidade Viva não foi aplicado."
-            exit 1
-          fi
+          grep -q "Igreja Batista Éden" src/App.tsx
+          grep -q "case 'attendance':" src/App.tsx
+          grep -q "Marcar Presença" src/App.tsx
+          grep -q "Notícias de Fé" src/App.tsx
+          grep -q "Ministérios" src/App.tsx
+          grep -q "Eventos" src/App.tsx
+          grep -q "Pregações" src/App.tsx
 
-          if ! grep -q "unidade-viva-font-scale" src/App.tsx; then
-            echo "ERRO: o botão A+ Zoom não foi aplicado."
-            exit 1
-          fi
-
-          if ! grep -q "Pedidos de Oração" src/App.tsx; then
-            echo "ERRO: os quadrinhos da página inicial não foram aplicados."
-            exit 1
-          fi
-
-          echo "Visual Unidade Viva aplicado e conferido."
+          echo "Visual e funções da Igreja Batista Éden aplicados."
 
       - name: Compilar aplicativo web
         run: npm run build
@@ -469,6 +468,8 @@ jobs:
 
           npx cap update android
           npx cap sync android
+
+          python3 aplicar-igreja-batista-eden.py --android-only
 
       - name: Verificar plugin dentro do Android
         run: |
@@ -643,14 +644,15 @@ jobs:
             "$APK_ORIGINAL"
 
           cp "$APK_ORIGINAL" \
-            saida/Unidade-Viva-release.apk
+            saida/Igreja-Batista-Eden-release.apk
 
-          echo "APK Unidade Viva assinado e verificado com sucesso."
+          echo "APK Igreja Batista Éden assinado e verificado com sucesso."
 
       - name: Publicar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Unidade-Viva-APK-Assinado
-          path: saida/Unidade-Viva-release.apk
+          name: Igreja-Batista-Eden-APK-Assinado
+          path: saida/Igreja-Batista-Eden-release.apk
           retention-days: 30
           if-no-files-found: error
+          
