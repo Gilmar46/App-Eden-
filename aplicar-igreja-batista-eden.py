@@ -50,6 +50,8 @@ if not APP_PATH.exists():
     raise SystemExit("ERRO: src/App.tsx não foi encontrado.")
 
 text = APP_PATH.read_text(encoding="utf-8")
+# Normaliza arquivos vindos do GitHub/Windows para evitar falhas por CRLF.
+text = text.replace("\r\n", "\n").replace("\r", "\n")
 
 if "const UnidadeVivaTile" not in text:
     raise SystemExit(
@@ -245,11 +247,10 @@ if members_count != 1:
     raise SystemExit("ERRO: lista derivada de membros não encontrada.")
 
 member_and_news_pattern = re.compile(
-    r"  const handleCreateMember = async "
-    r"\(e: React\.FormEvent\) => \{.*?"
-    r"\n  \};\n"
-    r"  const handleFetchNews = async",
-    re.DOTALL,
+    r"(?:^|\\n)\\s*const\\s+handleCreateMember\\s*=\\s*async\\s*"
+    r"\\(e:\\s*React\\.FormEvent\\)\\s*=>\\s*\\{.*?"
+    r"(?:^|\\n)\\s*const\\s+handleFetchNews\\s*=\\s*async",
+    re.DOTALL | re.MULTILINE,
 )
 
 member_attendance_and_news_functions = r'''  const handleCreateMember = async (e: React.FormEvent) => {
@@ -1358,7 +1359,7 @@ if CONFIG_PATH.exists():
     )
     CONFIG_PATH.write_text(config_text, encoding="utf-8")
 
-print("Identidade Igreja Batista Éden aplicada.")
+print("Identidade Igreja Batista Éden aplicada — correção v2.")
 print("Explorar corrigido com Pregações, Agenda e Doações.")
 print("Presença com validação por localização criada.")
 print("Cadastro e exibição de líderes corrigidos.")
