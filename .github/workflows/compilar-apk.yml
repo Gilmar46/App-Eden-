@@ -378,13 +378,8 @@ jobs:
             exit 1
           fi
 
-          if [ ! -f "aplicar-igreja-batista-eden-v3.py" ]; then
-            echo "ERRO: aplicar-igreja-batista-eden-v3.py não foi encontrado na raiz."
-            exit 1
-          fi
-
-          if [ ! -f "igreja-batista-eden-logo.png" ]; then
-            echo "ERRO: igreja-batista-eden-logo.png não foi encontrado na raiz."
+          if [ ! -f "aplicar-igreja-batista-eden-v4.py" ]; then
+            echo "ERRO: aplicar-igreja-batista-eden-v4.py não foi encontrado na raiz."
             exit 1
           fi
 
@@ -440,7 +435,7 @@ jobs:
           PY
 
           python3 aplicar-igreja-batista-eden-v2.py
-          python3 aplicar-igreja-batista-eden-v3.py
+          python3 aplicar-igreja-batista-eden-v4.py
 
           if [ ! -f "public/igreja-batista-eden-logo.png" ]; then
             echo "ERRO: o logotipo da Igreja Batista Éden não foi criado."
@@ -462,7 +457,7 @@ jobs:
             exit 1
           fi
 
-          echo "Visual, boletim e identidade da Igreja Batista Éden aplicados."
+          echo "Visual, boletim, logotipo e ícone da Igreja Batista Éden aplicados pelo V4."
 
       - name: Compilar aplicativo web
         run: npm run build
@@ -538,7 +533,7 @@ jobs:
           npx cap sync android
 
           python3 aplicar-igreja-batista-eden-v2.py --android-only
-          python3 aplicar-igreja-batista-eden-v3.py --android-only
+          python3 aplicar-igreja-batista-eden-v4.py --android-only
 
       - name: Verificar plugin dentro do Android
         run: |
