@@ -12,9 +12,9 @@ permissions:
 
 jobs:
   compilar-apk:
-    name: Gerar APK Android
+    name: Gerar APK Android Assinado
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
 
     steps:
       - name: Baixar código do repositório
@@ -35,32 +35,195 @@ jobs:
       - name: Instalar dependências do App Éden
         run: npm ci
 
-      - name: Instalar Capacitor Android
+      - name: Instalar Capacitor e login Google
         run: |
           npm install --no-save \
             @capacitor/core@8 \
             @capacitor/cli@8 \
-            @capacitor/android@8
+            @capacitor/android@8 \
+            @capacitor-firebase/authentication@8
 
       - name: Criar configuração Android
         run: |
           cat > capacitor.config.ts <<'EOF'
+          /// <reference types="@capacitor-firebase/authentication" />
+
           import type { CapacitorConfig } from '@capacitor/cli';
 
           const config: CapacitorConfig = {
             appId: 'com.jsonia.appeden',
             appName: 'App Éden',
             webDir: 'dist',
+
             server: {
               androidScheme: 'https'
             },
+
             android: {
               allowMixedContent: false
+            },
+
+            plugins: {
+              FirebaseAuthentication: {
+                skipNativeAuth: false,
+                providers: ['google.com']
+              }
             }
           };
 
           export default config;
           EOF
+
+      - name: Adaptar login Google para Android
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          app_path = Path("src/App.tsx")
+          text = app_path.read_text(encoding="utf-8")
+
+          old_auth_import = """import {
+            signInWithPopup,
+            GoogleAuthProvider,
+            signOut,
+            onAuthStateChanged,
+            User as FirebaseUser
+          } from 'firebase/auth';"""
+
+          new_auth_import = """import {
+            signInWithPopup,
+            signInWithCredential,
+            GoogleAuthProvider,
+            signOut,
+            onAuthStateChanged,
+            User as FirebaseUser
+          } from 'firebase/auth';
+          import { Capacitor } from '@capacitor/core';
+          import { FirebaseAuthentication } from '@capacitor-firebase/authentication';"""
+
+          if old_auth_import not in text:
+              raise SystemExit("Não foi possível localizar o import do Firebase Auth.")
+
+          text = text.replace(old_auth_import, new_auth_import, 1)
+
+          helper = """
+          const signInWithGoogleCompat = async () => {
+            if (Capacitor.isNativePlatform()) {
+              const result = await FirebaseAuthentication.signInWithGoogle();
+
+              const idToken = result.credential?.idToken;
+
+              if (!idToken) {
+                throw new Error('O Google não forneceu o token de autenticação.');
+              }
+
+              const credential = GoogleAuthProvider.credential(idToken);
+              await signInWithCredential(auth, credential);
+              return;
+            }
+
+            const provider = new GoogleAuthProvider();
+            await signInWithPopup(auth, provider);
+          };
+
+          """
+
+          marker = "// --- Main App ---"
+
+          if marker not in text:
+              raise SystemExit("Não foi possível localizar o início principal do aplicativo.")
+
+          text = text.replace(marker, helper + marker, 1)
+
+          old_login_view = """  const handleLogin = async () => {
+              const provider = new GoogleAuthProvider();
+              try {
+                await signInWithPopup(auth, provider);"""
+
+          new_login_view = """  const handleLogin = async () => {
+              try {
+                await signInWithGoogleCompat();"""
+
+          if old_login_view not in text:
+              raise SystemExit("Não foi possível localizar o login da tela inicial.")
+
+          text = text.replace(old_login_view, new_login_view, 1)
+
+          old_google_login = """  const handleGoogleLogin = async () => {
+              const provider = new GoogleAuthProvider();
+              try {
+                await signInWithPopup(auth, provider);"""
+
+          new_google_login = """  const handleGoogleLogin = async () => {
+              try {
+                await signInWithGoogleCompat();"""
+
+          if old_google_login not in text:
+              raise SystemExit("Não foi possível localizar o segundo login Google.")
+
+          text = text.replace(old_google_login, new_google_login, 1)
+
+          old_sign_out = "  const handleSignOut = () => signOut(auth);"
+
+          new_sign_out = """  const handleSignOut = async () => {
+              try {
+                if (Capacitor.isNativePlatform()) {
+                  await FirebaseAuthentication.signOut();
+                }
+              } finally {
+                await signOut(auth);
+              }
+            };"""
+
+          if old_sign_out not in text:
+              raise SystemExit("Não foi possível localizar a função de sair.")
+
+          text = text.replace(old_sign_out, new_sign_out, 1)
+
+          app_path.write_text(text, encoding="utf-8")
+
+          firebase_path = Path("src/lib/firebase.ts")
+          firebase_text = firebase_path.read_text(encoding="utf-8")
+
+          old_firebase_import = "import { getAuth } from 'firebase/auth';"
+
+          new_firebase_import = """import {
+            getAuth,
+            indexedDBLocalPersistence,
+            initializeAuth
+          } from 'firebase/auth';
+          import { Capacitor } from '@capacitor/core';"""
+
+          if old_firebase_import not in firebase_text:
+              raise SystemExit("Não foi possível localizar o import em firebase.ts.")
+
+          firebase_text = firebase_text.replace(
+              old_firebase_import,
+              new_firebase_import,
+              1
+          )
+
+          old_auth_export = "export const auth = getAuth(app);"
+
+          new_auth_export = """export const auth = Capacitor.isNativePlatform()
+            ? initializeAuth(app, {
+                persistence: indexedDBLocalPersistence
+              })
+            : getAuth(app);"""
+
+          if old_auth_export not in firebase_text:
+              raise SystemExit("Não foi possível localizar a inicialização do Auth.")
+
+          firebase_text = firebase_text.replace(
+              old_auth_export,
+              new_auth_export,
+              1
+          )
+
+          firebase_path.write_text(firebase_text, encoding="utf-8")
+
+          print("Login Google adaptado para Android com sucesso.")
+          PY
 
       - name: Compilar aplicativo web
         run: npm run build
@@ -68,28 +231,113 @@ jobs:
       - name: Criar projeto Android
         run: |
           rm -rf android
+
           npx cap add android
+
+          if [ ! -f "google-services.json" ]; then
+            echo "ERRO: google-services.json não foi encontrado na raiz."
+            exit 1
+          fi
+
+          cp google-services.json android/app/google-services.json
+
+          cat >> android/variables.gradle <<'EOF'
+
+          ext {
+              rgcfaIncludeGoogle = true
+              androidxCredentialsVersion = '1.3.0'
+          }
+          EOF
+
           npx cap sync android
+
+      - name: Restaurar chave de assinatura
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "ERRO: Secret ANDROID_KEYSTORE_BASE64 não encontrado."
+            exit 1
+          fi
+
+          if [ -z "$ANDROID_KEYSTORE_PASSWORD" ]; then
+            echo "ERRO: Secret ANDROID_KEYSTORE_PASSWORD não encontrado."
+            exit 1
+          fi
+
+          if [ -z "$ANDROID_KEY_ALIAS" ]; then
+            echo "ERRO: Secret ANDROID_KEY_ALIAS não encontrado."
+            exit 1
+          fi
+
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" \
+            | base64 --decode \
+            > android/app/app-eden-upload.jks
+
+          keytool -list \
+            -keystore android/app/app-eden-upload.jks \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" \
+            -alias "$ANDROID_KEY_ALIAS" \
+            > /dev/null
+
+          echo "Chave de assinatura restaurada com sucesso."
 
       - name: Configurar Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Compilar APK
+      - name: Compilar APK assinado
         working-directory: android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
 
-      - name: Preparar APK para download
+          ./gradlew assembleRelease \
+            --no-daemon \
+            --stacktrace \
+            "-Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/android/app/app-eden-upload.jks" \
+            "-Pandroid.injected.signing.store.password=$ANDROID_KEYSTORE_PASSWORD" \
+            "-Pandroid.injected.signing.key.alias=$ANDROID_KEY_ALIAS" \
+            "-Pandroid.injected.signing.key.password=$ANDROID_KEY_PASSWORD"
+
+      - name: Verificar e preparar APK
         run: |
           mkdir -p saida
-          cp android/app/build/outputs/apk/debug/app-debug.apk \
-             saida/App-Eden-debug.apk
+
+          APK_ORIGINAL=$(find android/app/build/outputs/apk/release \
+            -maxdepth 1 \
+            -type f \
+            -name "*.apk" \
+            | head -n 1)
+
+          if [ -z "$APK_ORIGINAL" ]; then
+            echo "ERRO: APK não foi encontrado."
+            exit 1
+          fi
+
+          BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" \
+            -mindepth 1 \
+            -maxdepth 1 \
+            -type d \
+            | sort -V \
+            | tail -n 1)
+
+          "$BUILD_TOOLS/apksigner" verify \
+            --verbose \
+            "$APK_ORIGINAL"
+
+          cp "$APK_ORIGINAL" saida/App-Eden-release.apk
+
+          echo "APK assinado e verificado com sucesso."
 
       - name: Publicar APK
         uses: actions/upload-artifact@v4
         with:
-          name: App-Eden-APK
-          path: saida/App-Eden-debug.apk
+          name: App-Eden-APK-Assinado
+          path: saida/App-Eden-release.apk
           retention-days: 30
           if-no-files-found: error
