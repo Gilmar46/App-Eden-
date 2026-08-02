@@ -373,13 +373,63 @@ jobs:
             exit 1
           fi
 
-          if [ ! -f "aplicar-igreja-batista-eden.py" ]; then
-            echo "ERRO: aplicar-igreja-batista-eden.py não foi encontrado na raiz."
+          if [ ! -f "aplicar-igreja-batista-eden-v2.py" ]; then
+            echo "ERRO: aplicar-igreja-batista-eden-v2.py não foi encontrado na raiz."
             exit 1
           fi
 
           python3 aplicar-unidade-viva.py
-          python3 aplicar-igreja-batista-eden.py
+
+          # Corrigir automaticamente a versão v2 antes de executá-la.
+          # A versão enviada ao repositório contém barras duplicadas no regex
+          # e três nomes de ícones que não existem no import atual do App.tsx.
+          python3 <<'PY'
+          from pathlib import Path
+
+          script_path = Path("aplicar-igreja-batista-eden-v2.py")
+          script_text = script_path.read_text(encoding="utf-8")
+
+          replacements = [
+              (
+                  '    r"(?:^|\\\\n)\\\\s*const\\\\s+handleCreateMember\\\\s*=\\\\s*async\\\\s*"',
+                  '    r"(?:^|\\n)\\s*const\\s+handleCreateMember\\s*=\\s*async\\s*"'
+              ),
+              (
+                  '    r"\\\\(e:\\\\s*React\\\\.FormEvent\\\\)\\\\s*=>\\\\s*\\\\{.*?"',
+                  '    r"\\(e:\\s*React\\.FormEvent\\)\\s*=>\\s*\\{.*?"'
+              ),
+              (
+                  '    r"(?:^|\\\\n)\\\\s*const\\\\s+handleFetchNews\\\\s*=\\\\s*async"',
+                  '    r"(?:^|\\n)\\s*const\\s+handleFetchNews\\s*=\\s*async"'
+              ),
+              ("icon: HandHeart,", "icon: Heart,"),
+              ("icon: Phone,", "icon: MessageCircle,"),
+              ("icon: Globe2,", "icon: Languages,")
+          ]
+
+          for old, new in replacements:
+              if old in script_text:
+                  script_text = script_text.replace(old, new, 1)
+              elif new not in script_text:
+                  raise SystemExit(
+                      "ERRO: não foi possível corrigir um trecho do script v2."
+                  )
+
+          compile(
+              script_text,
+              str(script_path),
+              "exec"
+          )
+
+          script_path.write_text(
+              script_text,
+              encoding="utf-8"
+          )
+
+          print("Script Igreja Batista Éden v2 corrigido e validado.")
+          PY
+
+          python3 aplicar-igreja-batista-eden-v2.py
 
           if [ ! -f "public/igreja-batista-eden-logo.png" ]; then
             echo "ERRO: o logotipo da Igreja Batista Éden não foi criado."
@@ -469,7 +519,7 @@ jobs:
           npx cap update android
           npx cap sync android
 
-          python3 aplicar-igreja-batista-eden.py --android-only
+          python3 aplicar-igreja-batista-eden-v2.py --android-only
 
       - name: Verificar plugin dentro do Android
         run: |
