@@ -1,1524 +1,744 @@
-# WORKFLOW DO GITHUB ACTIONS — NÃO COLE CÓDIGO PYTHON FORA DOS BLOCOS run
-# Local correto: .github/workflows/compilar-apk.yml
+from pathlib import Path
+import re
 
-name: Compilar APK Igreja Batista Éden
+APP_PATH = Path("src/App.tsx")
+MASTER_EMAIL = "gilmarcoutobrito@gmail.com"
+VERSION = "master-v4-membros-visivel"
 
-on:
-  workflow_dispatch:
 
-  push:
-    branches:
-      - main
+def replace_once(text: str, old: str, new: str, error: str) -> str:
+    if old not in text:
+        raise SystemExit(error)
+    return text.replace(old, new, 1)
 
-permissions:
-  contents: read
 
-jobs:
-  compilar-apk:
-    name: Gerar APK Igreja Batista Éden
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
+def patch_master_identity(text: str) -> str:
+    if "const MASTER_EMAIL =" not in text:
+        marker = "export default function App() {"
+        text = replace_once(
+            text,
+            marker,
+            f"const MASTER_EMAIL = '{MASTER_EMAIL}';\n\n{marker}",
+            "ERRO: início principal do aplicativo não encontrado."
+        )
 
-    steps:
-      - name: Baixar código do repositório
-        uses: actions/checkout@v4
+    user_marker = "  const [user, loading, error] = useAuthState(auth);"
+    if "const isMaster =" not in text:
+        text = replace_once(
+            text,
+            user_marker,
+            user_marker + """
+  const isMaster =
+    user?.email?.toLowerCase().trim() === MASTER_EMAIL;""",
+            "ERRO: estado de autenticação não encontrado."
+        )
 
-      - name: Configurar Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
+    text = text.replace(
+        "useState<'admin' | 'lider' | 'membro'>('membro')",
+        "useState<'master' | 'admin' | 'lider' | 'membro'>('membro')",
+        1
+    )
 
-      - name: Configurar Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "21"
+    text = text.replace(
+        "normalizedEmail === 'gilmarcoutobrito@gmail.com'",
+        "normalizedEmail === MASTER_EMAIL"
+    )
 
-      - name: Instalar dependências do aplicativo
-        run: npm ci
+    old_profile_block = """        if (!memberSnap.empty) {
+          const memberData = memberSnap.docs[0].data() as Member;
+          setUserRole(memberData.userType || 'membro');
+          setUserDepartmentId(memberData.departmentId || null);
+          if (memberData.userType === 'admin') setIsAdmin(true);
+        } else if (user.email === 'gilmarcoutobrito@gmail.com') {
+          setUserRole('admin');
+          setIsAdmin(true);
+        } else {
+          setUserRole('membro');
+        }"""
 
-      - name: Instalar e registrar Capacitor e login Google
-        run: |
-          npm install --save-exact \
-            @capacitor/core@8 \
-            @capacitor/android@8 \
-            @capacitor-firebase/authentication@8
+    new_profile_block = """        if (
+          user.email?.toLowerCase().trim() === MASTER_EMAIL
+        ) {
+          setUserRole('master');
+          setIsAdmin(true);
+          setUserDepartmentId(null);
+        } else if (!memberSnap.empty) {
+          const memberData =
+            memberSnap.docs[0].data() as Member;
 
-          npm install --save-dev --save-exact \
-            @capacitor/cli@8
-
-          node --input-type=module <<'NODE'
-          import fs from 'node:fs';
-
-          const packageJson = JSON.parse(
-            fs.readFileSync('package.json', 'utf8')
+          setUserRole(
+            memberData.userType || 'membro'
           );
 
-          const dependencies = [
-            '@capacitor/core',
-            '@capacitor/android',
-            '@capacitor-firebase/authentication'
-          ];
+          setUserDepartmentId(
+            memberData.departmentId || null
+          );
 
-          for (const dependency of dependencies) {
-            if (!packageJson.dependencies?.[dependency]) {
-              console.error(
-                `ERRO: ${dependency} não foi registrado no package.json.`
-              );
-              process.exit(1);
-            }
+          if (memberData.userType === 'admin') {
+            setIsAdmin(true);
           }
+        } else {
+          setUserRole('membro');
+        }"""
 
-          if (!packageJson.devDependencies?.['@capacitor/cli']) {
-            console.error(
-              'ERRO: @capacitor/cli não foi registrado no package.json.'
+    if old_profile_block in text:
+        text = text.replace(
+            old_profile_block,
+            new_profile_block,
+            1
+        )
+
+    admin_case_index = text.find("      case 'admin':")
+    if admin_case_index == -1:
+        raise SystemExit("ERRO: tela administrativa não encontrada.")
+
+    admin_segment = text[admin_case_index:]
+
+    if "if (!isAdminUnlocked && !isMaster)" not in admin_segment:
+        if "if (!isAdminUnlocked)" not in admin_segment:
+            raise SystemExit(
+                "ERRO: bloqueio por senha administrativa não foi encontrado."
+            )
+
+        admin_segment = admin_segment.replace(
+            "if (!isAdminUnlocked)",
+            "if (!isAdminUnlocked && !isMaster)",
+            1
+        )
+
+    admin_segment = admin_segment.replace(
+        '<h1 className="text-4xl font-black text-slate-900 tracking-tighter italic">Painel de Liderança</h1>',
+        '''<div>
+                <h1 className="text-4xl font-black text-slate-900 tracking-tighter italic">
+                  {isMaster
+                    ? 'Painel Master'
+                    : 'Painel de Liderança'}
+                </h1>
+
+                {isMaster && (
+                  <p className="mt-2 text-xs font-black text-[#0C5A9D]">
+                    Master: {MASTER_EMAIL}
+                  </p>
+                )}
+              </div>''',
+        1
+    )
+
+    master_panel_marker = (
+        '          <motion.div initial={{ opacity: 0 }} '
+        'animate={{ opacity: 1 }} '
+        'className="pb-24 max-w-2xl mx-auto px-4 pt-12">\n'
+    )
+
+    if "PUBLICAÇÃO CENTRALIZADA" not in admin_segment:
+        master_panel = '''            {isMaster && (
+              <div className="mb-7 rounded-[28px] bg-gradient-to-br from-[#082F56] to-[#0C5A9D] p-6 text-white shadow-xl shadow-blue-900/15">
+                <div className="flex items-start gap-4">
+                  <div className="w-14 h-14 shrink-0 rounded-2xl bg-white/15 flex items-center justify-center">
+                    <ShieldCheck className="w-8 h-8" />
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.22em] text-white/70">
+                      PUBLICAÇÃO CENTRALIZADA
+                    </p>
+
+                    <h2 className="mt-1 text-xl font-black">
+                      Aplicativo Master ativo
+                    </h2>
+
+                    <p className="mt-2 text-sm leading-relaxed text-white/85">
+                      O boletim publicado nesta conta será salvo no
+                      Firebase e aparecerá nos aplicativos dos membros.
+                      Os eventos cadastrados na Agenda também são
+                      sincronizados automaticamente.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+'''
+
+        if master_panel_marker not in admin_segment:
+            raise SystemExit("ERRO: abertura do Painel Master não encontrada.")
+
+        admin_segment = admin_segment.replace(
+            master_panel_marker,
+            master_panel_marker + master_panel,
+            1
+        )
+
+    return text[:admin_case_index] + admin_segment
+
+
+
+def patch_panel_visibility(text: str) -> str:
+    """Mostra o painel para Master, administrador e líder."""
+
+    mobile_old = """                (userRole === 'admin' || userRole === 'lider') ? { icon: Settings, label: 'Painel do Líder', info: 'Gestão ministerial', view: 'admin' } : null,"""
+
+    mobile_new = """                (
+                  userRole === 'master' ||
+                  userRole === 'admin' ||
+                  userRole === 'lider'
+                ) ? {
+                  icon: Settings,
+                  label: isMaster
+                    ? 'Painel Master'
+                    : 'Painel do Líder',
+                  info: isMaster
+                    ? 'Administração geral'
+                    : 'Gestão ministerial',
+                  view: 'admin'
+                } : null,"""
+
+    if mobile_old in text:
+        text = text.replace(
+            mobile_old,
+            mobile_new,
+            1
+        )
+    elif "label: isMaster\n                    ? 'Painel Master'" not in text:
+        raise SystemExit(
+            "ERRO: botão do painel no menu Mais não foi encontrado."
+        )
+
+    desktop_old = """          {(userRole === 'admin' || userRole === 'lider') && <SidebarItem active={activeView === 'admin'} icon={Settings} label="Painel do Líder" onClick={() => setActiveView('admin')} />}"""
+
+    desktop_new = """          {(
+            userRole === 'master' ||
+            userRole === 'admin' ||
+            userRole === 'lider'
+          ) && (
+            <SidebarItem
+              active={activeView === 'admin'}
+              icon={Settings}
+              label={
+                isMaster
+                  ? 'Painel Master'
+                  : 'Painel do Líder'
+              }
+              onClick={() => setActiveView('admin')}
+            />
+          )}"""
+
+    if desktop_old in text:
+        text = text.replace(
+            desktop_old,
+            desktop_new,
+            1
+        )
+    elif "label={\n                isMaster\n                  ? 'Painel Master'" not in text:
+        raise SystemExit(
+            "ERRO: botão do painel na barra lateral não foi encontrado."
+        )
+
+    home_button_old = """                  Painel Administrativo
+                </button>"""
+
+    home_button_new = """                  {isMaster
+                    ? 'Painel Master'
+                    : 'Painel Administrativo'}
+                </button>"""
+
+    if home_button_old in text:
+        text = text.replace(
+            home_button_old,
+            home_button_new,
+            1
+        )
+
+    return text
+
+
+def patch_members_visibility(text: str) -> str:
+    """Exibe Membros na entrada, em Explorar e no Painel Master."""
+
+    # 1. Adicionar Membros aos quadrinhos da tela inicial.
+    home_start = text.find("      case 'home': {")
+    home_end = text.find("        return (", home_start)
+
+    if home_start == -1 or home_end == -1:
+        raise SystemExit(
+            "ERRO: tela inicial não encontrada para adicionar Membros."
+        )
+
+    home_segment = text[home_start:home_end]
+
+    if (
+        "label: 'Membros'" not in home_segment
+        or "setActiveView('members')" not in home_segment
+    ):
+        events_tile = """          {
+            label: 'Eventos',
+            icon: CalendarDays,
+            background:
+              'bg-gradient-to-br from-[#EAF4FF] to-[#DBECFA]',
+            iconColor: 'text-[#0C5A9D]',
+            onClick: () => setActiveView('events')
+          }"""
+
+        members_and_events = """          {
+            label: 'Membros',
+            icon: Users,
+            background:
+              'bg-gradient-to-br from-[#E7F3FC] to-[#D5E9F7]',
+            iconColor: 'text-[#0C5A9D]',
+            onClick: () => setActiveView('members')
+          },
+          {
+            label: 'Eventos',
+            icon: CalendarDays,
+            background:
+              'bg-gradient-to-br from-[#EAF4FF] to-[#DBECFA]',
+            iconColor: 'text-[#0C5A9D]',
+            onClick: () => setActiveView('events')
+          }"""
+
+        if events_tile not in home_segment:
+            raise SystemExit(
+                "ERRO: quadrinho Eventos não encontrado "
+                "para inserir Membros na tela inicial."
+            )
+
+        home_segment = home_segment.replace(
+            events_tile,
+            members_and_events,
+            1
+        )
+
+        text = (
+            text[:home_start]
+            + home_segment
+            + text[home_end:]
+        )
+
+    # 2. Adicionar Membros à página Explorar do celular.
+    more_start = text.find("      case 'more': {")
+    more_end = text.find("      case 'news':", more_start)
+
+    if more_start == -1 or more_end == -1:
+        raise SystemExit(
+            "ERRO: página Explorar não encontrada."
+        )
+
+    more_segment = text[more_start:more_end]
+
+    if "view: 'members' as View" not in more_segment:
+        ministry_item = """          { label: 'Ministérios', info: 'Departamentos da igreja', icon: Users, view: 'ministry-list' as View },"""
+
+        members_and_ministry = """          { label: 'Membros', info: 'Lista, busca e cadastro', icon: Users, view: 'members' as View },
+          { label: 'Ministérios', info: 'Departamentos da igreja', icon: Users, view: 'ministry-list' as View },"""
+
+        if ministry_item not in more_segment:
+            raise SystemExit(
+                "ERRO: item Ministérios não encontrado "
+                "na página Explorar."
+            )
+
+        more_segment = more_segment.replace(
+            ministry_item,
+            members_and_ministry,
+            1
+        )
+
+        text = (
+            text[:more_start]
+            + more_segment
+            + text[more_end:]
+        )
+
+    # 3. Criar um acesso destacado no Painel Master.
+    admin_start = text.find("      case 'admin':")
+    admin_end = text.find("      case 'devotionals':", admin_start)
+
+    if admin_start == -1:
+        raise SystemExit(
+            "ERRO: Painel Master não encontrado."
+        )
+
+    if admin_end == -1:
+        admin_end = len(text)
+
+    admin_segment = text[admin_start:admin_end]
+
+    if "ACESSAR GESTÃO DE MEMBROS" not in admin_segment:
+        tabs_marker = """            <div className="flex items-center space-x-2 overflow-x-auto pb-4 mb-8 scrollbar-hide no-wrap">"""
+
+        members_shortcut = """            {(isMaster || isAdmin) && (
+              <button
+                type="button"
+                onClick={() => setAdminActiveTab('members')}
+                className="w-full mb-5 min-h-[58px] rounded-2xl bg-[#0C5A9D] text-white font-black flex items-center justify-center gap-3 shadow-lg shadow-blue-900/15"
+              >
+                <Users className="w-6 h-6" />
+                ACESSAR GESTÃO DE MEMBROS
+              </button>
+            )}
+
+"""
+
+        if tabs_marker not in admin_segment:
+            raise SystemExit(
+                "ERRO: abas do Painel Master não encontradas."
+            )
+
+        admin_segment = admin_segment.replace(
+            tabs_marker,
+            members_shortcut + tabs_marker,
+            1
+        )
+
+        text = (
+            text[:admin_start]
+            + admin_segment
+            + text[admin_end:]
+        )
+
+    return text
+
+def patch_shared_bulletin(text: str) -> str:
+    local_block_pattern = re.compile(
+        r"  const \[bulletinPrelude, setBulletinPrelude\].*?"
+        r"  const saveBulletinProgram = \(\) => \{.*?"
+        r"\n  \};",
+        re.DOTALL
+    )
+
+    shared_block = r'''  const [bulletinPrelude, setBulletinPrelude] =
+    useState('');
+
+  const [bulletinGreeting, setBulletinGreeting] =
+    useState('');
+
+  const [bulletinHymn, setBulletinHymn] =
+    useState('');
+
+  const [bulletinReading, setBulletinReading] =
+    useState('');
+
+  const [bulletinPraise, setBulletinPraise] =
+    useState('');
+
+  const [bulletinOffering, setBulletinOffering] =
+    useState('');
+
+  const [bulletinMessage, setBulletinMessage] =
+    useState('');
+
+  const [bulletinBlessing, setBulletinBlessing] =
+    useState('');
+
+  const [
+    bulletinUpdatedBy,
+    setBulletinUpdatedBy
+  ] = useState('');
+
+  const [
+    bulletinUpdatedAt,
+    setBulletinUpdatedAt
+  ] = useState('');
+
+  const [
+    bulletinIsPublishing,
+    setBulletinIsPublishing
+  ] = useState(false);
+
+  const saveBulletinProgram = async () => {
+    if (!isAdmin) {
+      window.alert(
+        'Somente a conta Master ou um administrador ' +
+        'pode publicar o boletim.'
+      );
+      return;
+    }
+
+    setBulletinIsPublishing(true);
+
+    try {
+      const worshipProgram = {
+        preludio: bulletinPrelude.trim(),
+        saudacaoOracao: bulletinGreeting.trim(),
+        hinoCongregacional: bulletinHymn.trim(),
+        leituraBiblica: bulletinReading.trim(),
+        momentoLouvor: bulletinPraise.trim(),
+        dizimosOfertas: bulletinOffering.trim(),
+        mensagemBiblica: bulletinMessage.trim(),
+        bencaoFinal: bulletinBlessing.trim(),
+        published: true,
+        updatedBy:
+          user?.displayName ||
+          user?.email ||
+          MASTER_EMAIL,
+        updatedByEmail:
+          user?.email || MASTER_EMAIL,
+        updatedAt: Timestamp.now()
+      };
+
+      await setDoc(
+        doc(db, 'config', 'church'),
+        { worshipProgram },
+        { merge: true }
+      );
+
+      await addActivityLog(
+        'Boletim Publicado',
+        'Programação do culto publicada para todos os membros.'
+      );
+
+      window.alert(
+        'Boletim publicado. Ele aparecerá no aplicativo ' +
+        'dos outros membros.'
+      );
+    } catch (error) {
+      console.error(
+        'Erro ao publicar boletim:',
+        error
+      );
+
+      window.alert(
+        'Não foi possível publicar o boletim. ' +
+        'Verifique a conexão e as permissões do Firebase.'
+      );
+    } finally {
+      setBulletinIsPublishing(false);
+    }
+  };'''
+
+    text, count = local_block_pattern.subn(shared_block, text, count=1)
+    if count != 1:
+        raise SystemExit("ERRO: formulário local do boletim não foi encontrado.")
+
+    config_marker = (
+        "        if (data.adminSecret) "
+        "setAdminSecretState(data.adminSecret);"
+    )
+
+    config_sync = r'''
+        if (data.worshipProgram) {
+          const program = data.worshipProgram;
+
+          setBulletinPrelude(program.preludio || '');
+          setBulletinGreeting(program.saudacaoOracao || '');
+          setBulletinHymn(program.hinoCongregacional || '');
+          setBulletinReading(program.leituraBiblica || '');
+          setBulletinPraise(program.momentoLouvor || '');
+          setBulletinOffering(program.dizimosOfertas || '');
+          setBulletinMessage(program.mensagemBiblica || '');
+          setBulletinBlessing(program.bencaoFinal || '');
+          setBulletinUpdatedBy(program.updatedBy || '');
+
+          if (program.updatedAt?.toDate) {
+            setBulletinUpdatedAt(
+              program.updatedAt.toDate().toLocaleString('pt-BR')
             );
-            process.exit(1);
+          } else {
+            setBulletinUpdatedAt('');
           }
+        }'''
 
-          console.log(
-            'Capacitor e Firebase Authentication registrados corretamente.'
-          );
-          NODE
+    if "if (data.worshipProgram)" not in text:
+        text = replace_once(
+            text,
+            config_marker,
+            config_marker + config_sync,
+            "ERRO: sincronização das configurações da igreja não foi encontrada."
+        )
 
-      - name: Criar configuração Android
-        run: |
-          cat > capacitor.config.ts <<'EOF'
-          /// <reference types="@capacitor-firebase/authentication" />
+    for state_name in (
+        "bulletinPrelude",
+        "bulletinGreeting",
+        "bulletinHymn",
+        "bulletinReading",
+        "bulletinPraise",
+        "bulletinOffering",
+        "bulletinMessage",
+        "bulletinBlessing",
+    ):
+        text = text.replace(
+            f"<input value={{{state_name}}}",
+            f"<input readOnly={{!isAdmin}} value={{{state_name}}}",
+            1
+        )
 
-          import type { CapacitorConfig } from '@capacitor/cli';
+    content_marker = (
+        '              <div className="p-5 sm:p-7 '
+        'space-y-4 bg-[#FFFEFB]">\n'
+    )
 
-          const config: CapacitorConfig = {
-            appId: 'com.jsonia.appeden',
-            appName: 'Igreja Batista Éden',
-            webDir: 'dist',
+    if "Sincronizado com os membros" not in text:
+        status_box = '''                <div className="rounded-2xl border border-[#CFE1EF] bg-[#EFF7FC] p-4">
+                  <div className="flex items-start gap-3">
+                    <CheckCircle2 className="w-6 h-6 shrink-0 text-emerald-600" />
 
-            server: {
-              androidScheme: 'https'
-            },
+                    <div>
+                      <p className="text-sm font-black text-[#0A3158]">
+                        Sincronizado com os membros
+                      </p>
 
-            android: {
-              allowMixedContent: false
-            },
+                      <p className="mt-1 text-xs leading-relaxed text-slate-600">
+                        {bulletinUpdatedAt
+                          ? `Última publicação: ${bulletinUpdatedAt}`
+                          : 'Nenhum boletim foi publicado ainda.'}
+                      </p>
 
-            plugins: {
-              FirebaseAuthentication: {
-                skipNativeAuth: true,
-                providers: ['google.com']
-              }
-            }
-          };
-
-          export default config;
-          EOF
-
-      - name: Adaptar login Google para Android
-        run: |
-          python3 <<'PY'
-          from pathlib import Path
-          import re
-
-          app_path = Path("src/App.tsx")
-
-          if not app_path.exists():
-              raise SystemExit(
-                  "ERRO: src/App.tsx não foi encontrado."
-              )
-
-          text = app_path.read_text(encoding="utf-8")
-
-          auth_import_pattern = re.compile(
-              r"import\s*\{[^}]*\}\s*"
-              r"from\s*['\"]firebase/auth['\"]\s*;",
-              re.DOTALL
-          )
-
-          auth_match = auth_import_pattern.search(text)
-
-          if not auth_match:
-              raise SystemExit(
-                  "ERRO: import do Firebase Auth não foi encontrado."
-              )
-
-          old_auth_import = auth_match.group(0)
-
-          required_names = [
-              "signInWithPopup",
-              "GoogleAuthProvider",
-              "signOut",
-              "onAuthStateChanged",
-              "FirebaseUser"
-          ]
-
-          for name in required_names:
-              if name not in old_auth_import:
-                  raise SystemExit(
-                      f"ERRO: {name} não foi encontrado "
-                      "no import do Firebase Auth."
-                  )
-
-          new_auth_import = """import {
-            signInWithPopup,
-            signInWithCredential,
-            GoogleAuthProvider,
-            signOut,
-            onAuthStateChanged,
-            User as FirebaseUser
-          } from 'firebase/auth';
-          import { Capacitor } from '@capacitor/core';
-          import {
-            FirebaseAuthentication
-          } from '@capacitor-firebase/authentication';"""
-
-          text = (
-              text[:auth_match.start()]
-              + new_auth_import
-              + text[auth_match.end():]
-          )
-
-          helper = """
-          const describeGoogleAuthError = (error: unknown) => {
-            const authError = error as {
-              code?: string;
-              message?: string;
-            };
-
-            return {
-              code: authError?.code || 'sem código',
-              message:
-                authError?.message ||
-                String(error) ||
-                'Erro desconhecido'
-            };
-          };
-
-          const signInWithGoogleCompat = async () => {
-            try {
-              if (Capacitor.isNativePlatform()) {
-                if (
-                  !Capacitor.isPluginAvailable(
-                    'FirebaseAuthentication'
-                  )
-                ) {
-                  throw new Error(
-                    'O plugin FirebaseAuthentication não está ' +
-                    'disponível neste APK.'
-                  );
-                }
-
-                const result =
-                  await FirebaseAuthentication.signInWithGoogle();
-
-                const idToken =
-                  result.credential?.idToken || null;
-
-                const accessToken =
-                  result.credential?.accessToken || null;
-
-                if (!idToken && !accessToken) {
-                  throw new Error(
-                    'O Google não forneceu uma credencial válida.'
-                  );
-                }
-
-                const credential =
-                  GoogleAuthProvider.credential(
-                    idToken,
-                    accessToken
-                  );
-
-                await signInWithCredential(
-                  auth,
-                  credential
-                );
-
-                return;
-              }
-
-              const provider =
-                new GoogleAuthProvider();
-
-              await signInWithPopup(
-                auth,
-                provider
-              );
-            } catch (error) {
-              const details =
-                describeGoogleAuthError(error);
-
-              console.error(
-                'Erro completo do login Google:',
-                error
-              );
-
-              window.alert(
-                'Falha no login Google.\\n\\n' +
-                'Código: ' + details.code + '\\n\\n' +
-                'Mensagem: ' + details.message
-              );
-            }
-          };
-
-          """
-
-          marker = "// --- Main App ---"
-
-          if marker not in text:
-              raise SystemExit(
-                  "ERRO: marcador principal do aplicativo "
-                  "não foi encontrado."
-              )
-
-          text = text.replace(
-              marker,
-              helper + marker,
-              1
-          )
-
-          login_view_pattern = re.compile(
-              r"const handleLogin = async \(\) => \{\s*"
-              r"const provider = new GoogleAuthProvider\(\);\s*"
-              r"try \{\s*"
-              r"await signInWithPopup\(auth,\s*provider\);"
-          )
-
-          login_view_replacement = """const handleLogin = async () => {
-              try {
-                await signInWithGoogleCompat();"""
-
-          text, login_view_count = (
-              login_view_pattern.subn(
-                  login_view_replacement,
-                  text,
-                  count=1
-              )
-          )
-
-          if login_view_count != 1:
-              raise SystemExit(
-                  "ERRO: botão de login da tela inicial "
-                  "não foi encontrado."
-              )
-
-          google_login_pattern = re.compile(
-              r"const handleGoogleLogin = async \(\) => \{\s*"
-              r"const provider = new GoogleAuthProvider\(\);\s*"
-              r"try \{\s*"
-              r"await signInWithPopup\(auth,\s*provider\);"
-          )
-
-          google_login_replacement = """const handleGoogleLogin = async () => {
-              try {
-                await signInWithGoogleCompat();"""
-
-          text, google_login_count = (
-              google_login_pattern.subn(
-                  google_login_replacement,
-                  text,
-                  count=1
-              )
-          )
-
-          if google_login_count != 1:
-              raise SystemExit(
-                  "ERRO: segundo botão de login Google "
-                  "não foi encontrado."
-              )
-
-          sign_out_pattern = re.compile(
-              r"const handleSignOut\s*=\s*"
-              r"\(\)\s*=>\s*signOut\(auth\);"
-          )
-
-          new_sign_out = """const handleSignOut = async () => {
-              if (Capacitor.isNativePlatform()) {
-                try {
-                  await FirebaseAuthentication.signOut();
-                } catch (error) {
-                  console.warn(
-                    'Não foi possível encerrar a sessão nativa:',
-                    error
-                  );
-                }
-              }
-
-              await signOut(auth);
-            };"""
-
-          text, sign_out_count = sign_out_pattern.subn(
-              new_sign_out,
-              text,
-              count=1
-          )
-
-          if sign_out_count != 1:
-              raise SystemExit(
-                  "ERRO: função de sair não foi encontrada."
-              )
-
-          app_path.write_text(
-              text,
-              encoding="utf-8"
-          )
-
-          print("Import do Firebase Auth atualizado.")
-          print("Login inicial atualizado:", login_view_count)
-          print("Segundo login atualizado:", google_login_count)
-          print("Função de sair atualizada:", sign_out_count)
-          print("Login Google Android adaptado com sucesso.")
-          PY
-
-      - name: Criar Master V4 com Membros visível
-        run: |
-          cat > aplicar-igreja-batista-eden-master-v4.py <<'PYMASTER'
-          from pathlib import Path
-          import re
-          
-          APP_PATH = Path("src/App.tsx")
-          MASTER_EMAIL = "gilmarcoutobrito@gmail.com"
-          VERSION = "master-v4-membros-visivel"
-          
-          
-          def replace_once(text: str, old: str, new: str, error: str) -> str:
-              if old not in text:
-                  raise SystemExit(error)
-              return text.replace(old, new, 1)
-          
-          
-          def patch_master_identity(text: str) -> str:
-              if "const MASTER_EMAIL =" not in text:
-                  marker = "export default function App() {"
-                  text = replace_once(
-                      text,
-                      marker,
-                      f"const MASTER_EMAIL = '{MASTER_EMAIL}';\n\n{marker}",
-                      "ERRO: início principal do aplicativo não encontrado."
-                  )
-          
-              user_marker = "  const [user, loading, error] = useAuthState(auth);"
-              if "const isMaster =" not in text:
-                  text = replace_once(
-                      text,
-                      user_marker,
-                      user_marker + """
-            const isMaster =
-              user?.email?.toLowerCase().trim() === MASTER_EMAIL;""",
-                      "ERRO: estado de autenticação não encontrado."
-                  )
-          
-              text = text.replace(
-                  "useState<'admin' | 'lider' | 'membro'>('membro')",
-                  "useState<'master' | 'admin' | 'lider' | 'membro'>('membro')",
-                  1
-              )
-          
-              text = text.replace(
-                  "normalizedEmail === 'gilmarcoutobrito@gmail.com'",
-                  "normalizedEmail === MASTER_EMAIL"
-              )
-          
-              old_profile_block = """        if (!memberSnap.empty) {
-                    const memberData = memberSnap.docs[0].data() as Member;
-                    setUserRole(memberData.userType || 'membro');
-                    setUserDepartmentId(memberData.departmentId || null);
-                    if (memberData.userType === 'admin') setIsAdmin(true);
-                  } else if (user.email === 'gilmarcoutobrito@gmail.com') {
-                    setUserRole('admin');
-                    setIsAdmin(true);
-                  } else {
-                    setUserRole('membro');
-                  }"""
-          
-              new_profile_block = """        if (
-                    user.email?.toLowerCase().trim() === MASTER_EMAIL
-                  ) {
-                    setUserRole('master');
-                    setIsAdmin(true);
-                    setUserDepartmentId(null);
-                  } else if (!memberSnap.empty) {
-                    const memberData =
-                      memberSnap.docs[0].data() as Member;
-          
-                    setUserRole(
-                      memberData.userType || 'membro'
-                    );
-          
-                    setUserDepartmentId(
-                      memberData.departmentId || null
-                    );
-          
-                    if (memberData.userType === 'admin') {
-                      setIsAdmin(true);
-                    }
-                  } else {
-                    setUserRole('membro');
-                  }"""
-          
-              if old_profile_block in text:
-                  text = text.replace(
-                      old_profile_block,
-                      new_profile_block,
-                      1
-                  )
-          
-              admin_case_index = text.find("      case 'admin':")
-              if admin_case_index == -1:
-                  raise SystemExit("ERRO: tela administrativa não encontrada.")
-          
-              admin_segment = text[admin_case_index:]
-          
-              if "if (!isAdminUnlocked && !isMaster)" not in admin_segment:
-                  if "if (!isAdminUnlocked)" not in admin_segment:
-                      raise SystemExit(
-                          "ERRO: bloqueio por senha administrativa não foi encontrado."
-                      )
-          
-                  admin_segment = admin_segment.replace(
-                      "if (!isAdminUnlocked)",
-                      "if (!isAdminUnlocked && !isMaster)",
-                      1
-                  )
-          
-              admin_segment = admin_segment.replace(
-                  '<h1 className="text-4xl font-black text-slate-900 tracking-tighter italic">Painel de Liderança</h1>',
-                  '''<div>
-                          <h1 className="text-4xl font-black text-slate-900 tracking-tighter italic">
-                            {isMaster
-                              ? 'Painel Master'
-                              : 'Painel de Liderança'}
-                          </h1>
-          
-                          {isMaster && (
-                            <p className="mt-2 text-xs font-black text-[#0C5A9D]">
-                              Master: {MASTER_EMAIL}
-                            </p>
-                          )}
-                        </div>''',
-                  1
-              )
-          
-              master_panel_marker = (
-                  '          <motion.div initial={{ opacity: 0 }} '
-                  'animate={{ opacity: 1 }} '
-                  'className="pb-24 max-w-2xl mx-auto px-4 pt-12">\n'
-              )
-          
-              if "PUBLICAÇÃO CENTRALIZADA" not in admin_segment:
-                  master_panel = '''            {isMaster && (
-                        <div className="mb-7 rounded-[28px] bg-gradient-to-br from-[#082F56] to-[#0C5A9D] p-6 text-white shadow-xl shadow-blue-900/15">
-                          <div className="flex items-start gap-4">
-                            <div className="w-14 h-14 shrink-0 rounded-2xl bg-white/15 flex items-center justify-center">
-                              <ShieldCheck className="w-8 h-8" />
-                            </div>
-          
-                            <div>
-                              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-white/70">
-                                PUBLICAÇÃO CENTRALIZADA
-                              </p>
-          
-                              <h2 className="mt-1 text-xl font-black">
-                                Aplicativo Master ativo
-                              </h2>
-          
-                              <p className="mt-2 text-sm leading-relaxed text-white/85">
-                                O boletim publicado nesta conta será salvo no
-                                Firebase e aparecerá nos aplicativos dos membros.
-                                Os eventos cadastrados na Agenda também são
-                                sincronizados automaticamente.
-                              </p>
-                            </div>
-                          </div>
-                        </div>
+                      {bulletinUpdatedBy && (
+                        <p className="mt-1 text-xs font-bold text-slate-500">
+                          Publicado por: {bulletinUpdatedBy}
+                        </p>
                       )}
-          
-          '''
-          
-                  if master_panel_marker not in admin_segment:
-                      raise SystemExit("ERRO: abertura do Painel Master não encontrada.")
-          
-                  admin_segment = admin_segment.replace(
-                      master_panel_marker,
-                      master_panel_marker + master_panel,
-                      1
-                  )
-          
-              return text[:admin_case_index] + admin_segment
-          
-          
-          
-          def patch_panel_visibility(text: str) -> str:
-              """Mostra o painel para Master, administrador e líder."""
-          
-              mobile_old = """                (userRole === 'admin' || userRole === 'lider') ? { icon: Settings, label: 'Painel do Líder', info: 'Gestão ministerial', view: 'admin' } : null,"""
-          
-              mobile_new = """                (
-                            userRole === 'master' ||
-                            userRole === 'admin' ||
-                            userRole === 'lider'
-                          ) ? {
-                            icon: Settings,
-                            label: isMaster
-                              ? 'Painel Master'
-                              : 'Painel do Líder',
-                            info: isMaster
-                              ? 'Administração geral'
-                              : 'Gestão ministerial',
-                            view: 'admin'
-                          } : null,"""
-          
-              if mobile_old in text:
-                  text = text.replace(
-                      mobile_old,
-                      mobile_new,
-                      1
-                  )
-              elif "label: isMaster\n                    ? 'Painel Master'" not in text:
-                  raise SystemExit(
-                      "ERRO: botão do painel no menu Mais não foi encontrado."
-                  )
-          
-              desktop_old = """          {(userRole === 'admin' || userRole === 'lider') && <SidebarItem active={activeView === 'admin'} icon={Settings} label="Painel do Líder" onClick={() => setActiveView('admin')} />}"""
-          
-              desktop_new = """          {(
-                      userRole === 'master' ||
-                      userRole === 'admin' ||
-                      userRole === 'lider'
-                    ) && (
-                      <SidebarItem
-                        active={activeView === 'admin'}
-                        icon={Settings}
-                        label={
-                          isMaster
-                            ? 'Painel Master'
-                            : 'Painel do Líder'
-                        }
-                        onClick={() => setActiveView('admin')}
-                      />
-                    )}"""
-          
-              if desktop_old in text:
-                  text = text.replace(
-                      desktop_old,
-                      desktop_new,
-                      1
-                  )
-              elif "label={\n                isMaster\n                  ? 'Painel Master'" not in text:
-                  raise SystemExit(
-                      "ERRO: botão do painel na barra lateral não foi encontrado."
-                  )
-          
-              home_button_old = """                  Painel Administrativo
-                          </button>"""
-          
-              home_button_new = """                  {isMaster
-                              ? 'Painel Master'
-                              : 'Painel Administrativo'}
-                          </button>"""
-          
-              if home_button_old in text:
-                  text = text.replace(
-                      home_button_old,
-                      home_button_new,
-                      1
-                  )
-          
-              return text
-          
-          
-          def patch_members_visibility(text: str) -> str:
-              """Exibe Membros na entrada, em Explorar e no Painel Master."""
-          
-              # 1. Adicionar Membros aos quadrinhos da tela inicial.
-              home_start = text.find("      case 'home': {")
-              home_end = text.find("        return (", home_start)
-          
-              if home_start == -1 or home_end == -1:
-                  raise SystemExit(
-                      "ERRO: tela inicial não encontrada para adicionar Membros."
-                  )
-          
-              home_segment = text[home_start:home_end]
-          
-              if (
-                  "label: 'Membros'" not in home_segment
-                  or "setActiveView('members')" not in home_segment
-              ):
-                  events_tile = """          {
-                      label: 'Eventos',
-                      icon: CalendarDays,
-                      background:
-                        'bg-gradient-to-br from-[#EAF4FF] to-[#DBECFA]',
-                      iconColor: 'text-[#0C5A9D]',
-                      onClick: () => setActiveView('events')
-                    }"""
-          
-                  members_and_events = """          {
-                      label: 'Membros',
-                      icon: Users,
-                      background:
-                        'bg-gradient-to-br from-[#E7F3FC] to-[#D5E9F7]',
-                      iconColor: 'text-[#0C5A9D]',
-                      onClick: () => setActiveView('members')
-                    },
-                    {
-                      label: 'Eventos',
-                      icon: CalendarDays,
-                      background:
-                        'bg-gradient-to-br from-[#EAF4FF] to-[#DBECFA]',
-                      iconColor: 'text-[#0C5A9D]',
-                      onClick: () => setActiveView('events')
-                    }"""
-          
-                  if events_tile not in home_segment:
-                      raise SystemExit(
-                          "ERRO: quadrinho Eventos não encontrado "
-                          "para inserir Membros na tela inicial."
-                      )
-          
-                  home_segment = home_segment.replace(
-                      events_tile,
-                      members_and_events,
-                      1
-                  )
-          
-                  text = (
-                      text[:home_start]
-                      + home_segment
-                      + text[home_end:]
-                  )
-          
-              # 2. Adicionar Membros à página Explorar do celular.
-              more_start = text.find("      case 'more': {")
-              more_end = text.find("      case 'news':", more_start)
-          
-              if more_start == -1 or more_end == -1:
-                  raise SystemExit(
-                      "ERRO: página Explorar não encontrada."
-                  )
-          
-              more_segment = text[more_start:more_end]
-          
-              if "view: 'members' as View" not in more_segment:
-                  ministry_item = """          { label: 'Ministérios', info: 'Departamentos da igreja', icon: Users, view: 'ministry-list' as View },"""
-          
-                  members_and_ministry = """          { label: 'Membros', info: 'Lista, busca e cadastro', icon: Users, view: 'members' as View },
-                    { label: 'Ministérios', info: 'Departamentos da igreja', icon: Users, view: 'ministry-list' as View },"""
-          
-                  if ministry_item not in more_segment:
-                      raise SystemExit(
-                          "ERRO: item Ministérios não encontrado "
-                          "na página Explorar."
-                      )
-          
-                  more_segment = more_segment.replace(
-                      ministry_item,
-                      members_and_ministry,
-                      1
-                  )
-          
-                  text = (
-                      text[:more_start]
-                      + more_segment
-                      + text[more_end:]
-                  )
-          
-              # 3. Criar um acesso destacado no Painel Master.
-              admin_start = text.find("      case 'admin':")
-              admin_end = text.find("      case 'devotionals':", admin_start)
-          
-              if admin_start == -1:
-                  raise SystemExit(
-                      "ERRO: Painel Master não encontrado."
-                  )
-          
-              if admin_end == -1:
-                  admin_end = len(text)
-          
-              admin_segment = text[admin_start:admin_end]
-          
-              if "ACESSAR GESTÃO DE MEMBROS" not in admin_segment:
-                  tabs_marker = """            <div className="flex items-center space-x-2 overflow-x-auto pb-4 mb-8 scrollbar-hide no-wrap">"""
-          
-                  members_shortcut = """            {(isMaster || isAdmin) && (
-                        <button
-                          type="button"
-                          onClick={() => setAdminActiveTab('members')}
-                          className="w-full mb-5 min-h-[58px] rounded-2xl bg-[#0C5A9D] text-white font-black flex items-center justify-center gap-3 shadow-lg shadow-blue-900/15"
-                        >
-                          <Users className="w-6 h-6" />
-                          ACESSAR GESTÃO DE MEMBROS
-                        </button>
-                      )}
-          
-          """
-          
-                  if tabs_marker not in admin_segment:
-                      raise SystemExit(
-                          "ERRO: abas do Painel Master não encontradas."
-                      )
-          
-                  admin_segment = admin_segment.replace(
-                      tabs_marker,
-                      members_shortcut + tabs_marker,
-                      1
-                  )
-          
-                  text = (
-                      text[:admin_start]
-                      + admin_segment
-                      + text[admin_end:]
-                  )
-          
-              return text
-          
-          def patch_shared_bulletin(text: str) -> str:
-              local_block_pattern = re.compile(
-                  r"  const \[bulletinPrelude, setBulletinPrelude\].*?"
-                  r"  const saveBulletinProgram = \(\) => \{.*?"
-                  r"\n  \};",
-                  re.DOTALL
-              )
-          
-              shared_block = r'''  const [bulletinPrelude, setBulletinPrelude] =
-              useState('');
-          
-            const [bulletinGreeting, setBulletinGreeting] =
-              useState('');
-          
-            const [bulletinHymn, setBulletinHymn] =
-              useState('');
-          
-            const [bulletinReading, setBulletinReading] =
-              useState('');
-          
-            const [bulletinPraise, setBulletinPraise] =
-              useState('');
-          
-            const [bulletinOffering, setBulletinOffering] =
-              useState('');
-          
-            const [bulletinMessage, setBulletinMessage] =
-              useState('');
-          
-            const [bulletinBlessing, setBulletinBlessing] =
-              useState('');
-          
-            const [
-              bulletinUpdatedBy,
-              setBulletinUpdatedBy
-            ] = useState('');
-          
-            const [
-              bulletinUpdatedAt,
-              setBulletinUpdatedAt
-            ] = useState('');
-          
-            const [
-              bulletinIsPublishing,
-              setBulletinIsPublishing
-            ] = useState(false);
-          
-            const saveBulletinProgram = async () => {
-              if (!isAdmin) {
-                window.alert(
-                  'Somente a conta Master ou um administrador ' +
-                  'pode publicar o boletim.'
-                );
-                return;
-              }
-          
-              setBulletinIsPublishing(true);
-          
-              try {
-                const worshipProgram = {
-                  preludio: bulletinPrelude.trim(),
-                  saudacaoOracao: bulletinGreeting.trim(),
-                  hinoCongregacional: bulletinHymn.trim(),
-                  leituraBiblica: bulletinReading.trim(),
-                  momentoLouvor: bulletinPraise.trim(),
-                  dizimosOfertas: bulletinOffering.trim(),
-                  mensagemBiblica: bulletinMessage.trim(),
-                  bencaoFinal: bulletinBlessing.trim(),
-                  published: true,
-                  updatedBy:
-                    user?.displayName ||
-                    user?.email ||
-                    MASTER_EMAIL,
-                  updatedByEmail:
-                    user?.email || MASTER_EMAIL,
-                  updatedAt: Timestamp.now()
-                };
-          
-                await setDoc(
-                  doc(db, 'config', 'church'),
-                  { worshipProgram },
-                  { merge: true }
-                );
-          
-                await addActivityLog(
-                  'Boletim Publicado',
-                  'Programação do culto publicada para todos os membros.'
-                );
-          
-                window.alert(
-                  'Boletim publicado. Ele aparecerá no aplicativo ' +
-                  'dos outros membros.'
-                );
-              } catch (error) {
-                console.error(
-                  'Erro ao publicar boletim:',
-                  error
-                );
-          
-                window.alert(
-                  'Não foi possível publicar o boletim. ' +
-                  'Verifique a conexão e as permissões do Firebase.'
-                );
-              } finally {
-                setBulletinIsPublishing(false);
-              }
-            };'''
-          
-              text, count = local_block_pattern.subn(shared_block, text, count=1)
-              if count != 1:
-                  raise SystemExit("ERRO: formulário local do boletim não foi encontrado.")
-          
-              config_marker = (
-                  "        if (data.adminSecret) "
-                  "setAdminSecretState(data.adminSecret);"
-              )
-          
-              config_sync = r'''
-                  if (data.worshipProgram) {
-                    const program = data.worshipProgram;
-          
-                    setBulletinPrelude(program.preludio || '');
-                    setBulletinGreeting(program.saudacaoOracao || '');
-                    setBulletinHymn(program.hinoCongregacional || '');
-                    setBulletinReading(program.leituraBiblica || '');
-                    setBulletinPraise(program.momentoLouvor || '');
-                    setBulletinOffering(program.dizimosOfertas || '');
-                    setBulletinMessage(program.mensagemBiblica || '');
-                    setBulletinBlessing(program.bencaoFinal || '');
-                    setBulletinUpdatedBy(program.updatedBy || '');
-          
-                    if (program.updatedAt?.toDate) {
-                      setBulletinUpdatedAt(
-                        program.updatedAt.toDate().toLocaleString('pt-BR')
-                      );
-                    } else {
-                      setBulletinUpdatedAt('');
-                    }
-                  }'''
-          
-              if "if (data.worshipProgram)" not in text:
-                  text = replace_once(
-                      text,
-                      config_marker,
-                      config_marker + config_sync,
-                      "ERRO: sincronização das configurações da igreja não foi encontrada."
-                  )
-          
-              for state_name in (
-                  "bulletinPrelude",
-                  "bulletinGreeting",
-                  "bulletinHymn",
-                  "bulletinReading",
-                  "bulletinPraise",
-                  "bulletinOffering",
-                  "bulletinMessage",
-                  "bulletinBlessing",
-              ):
-                  text = text.replace(
-                      f"<input value={{{state_name}}}",
-                      f"<input readOnly={{!isAdmin}} value={{{state_name}}}",
-                      1
-                  )
-          
-              content_marker = (
-                  '              <div className="p-5 sm:p-7 '
-                  'space-y-4 bg-[#FFFEFB]">\n'
-              )
-          
-              if "Sincronizado com os membros" not in text:
-                  status_box = '''                <div className="rounded-2xl border border-[#CFE1EF] bg-[#EFF7FC] p-4">
-                            <div className="flex items-start gap-3">
-                              <CheckCircle2 className="w-6 h-6 shrink-0 text-emerald-600" />
-          
-                              <div>
-                                <p className="text-sm font-black text-[#0A3158]">
-                                  Sincronizado com os membros
-                                </p>
-          
-                                <p className="mt-1 text-xs leading-relaxed text-slate-600">
-                                  {bulletinUpdatedAt
-                                    ? `Última publicação: ${bulletinUpdatedAt}`
-                                    : 'Nenhum boletim foi publicado ainda.'}
-                                </p>
-          
-                                {bulletinUpdatedBy && (
-                                  <p className="mt-1 text-xs font-bold text-slate-500">
-                                    Publicado por: {bulletinUpdatedBy}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-          
-          '''
-                  text = replace_once(
-                      text,
-                      content_marker,
-                      content_marker + status_box,
-                      "ERRO: área de conteúdo do boletim não encontrada."
-                  )
-          
-              old_button = '''                <button
-                            type="button"
-                            onClick={saveBulletinProgram}
-                            className="w-full min-h-[56px] rounded-2xl bg-[#0C5A9D] text-white text-sm font-black tracking-wide"
-                          >
-                            SALVAR PROGRAMAÇÃO
-                          </button>'''
-          
-              new_button = '''                {isAdmin ? (
-                            <button
-                              type="button"
-                              onClick={saveBulletinProgram}
-                              disabled={bulletinIsPublishing}
-                              className="w-full min-h-[56px] rounded-2xl bg-[#0C5A9D] text-white text-sm font-black tracking-wide disabled:opacity-50"
-                            >
-                              {bulletinIsPublishing
-                                ? 'PUBLICANDO PARA TODOS...'
-                                : 'PUBLICAR PARA TODOS OS MEMBROS'}
-                            </button>
-                          ) : (
-                            <div className="rounded-2xl bg-slate-100 p-4 text-center text-xs font-bold text-slate-600">
-                              Este boletim é preenchido pela liderança.
-                              Os dados são atualizados automaticamente.
-                            </div>
-                          )}'''
-          
-              text = replace_once(
-                  text,
-                  old_button,
-                  new_button,
-                  "ERRO: botão de salvar o boletim não encontrado."
-              )
-          
-              return text
-          
-          
-          def patch_shared_events_message(text: str) -> str:
-              old_agenda_save = """      setShowAgendaForm(false);
-                setNewAgendaItem({ title: '', time: '', date: '', description: '' });"""
-          
-              new_agenda_save = """      setShowAgendaForm(false);
-                setNewAgendaItem({
-                  title: '',
-                  time: '',
-                  date: '',
-                  description: ''
-                });
-          
-                alert(
-                  'Evento publicado. Ele aparecerá automaticamente ' +
-                  'no aplicativo dos membros.'
-                );"""
-          
-              if old_agenda_save in text:
-                  text = text.replace(old_agenda_save, new_agenda_save, 1)
-          
-              return text
-          
-          
-          def main() -> None:
-              if not APP_PATH.exists():
-                  raise SystemExit("ERRO: src/App.tsx não foi encontrado.")
-          
-              text = APP_PATH.read_text(encoding="utf-8")
-              text = text.replace("\r\n", "\n").replace("\r", "\n")
-          
-              # Corrigir sempre os acessos do painel e de Membros,
-              # inclusive quando uma versão Master anterior já estiver ativa.
-              text = patch_panel_visibility(text)
-              text = patch_members_visibility(text)
-          
-              if "Aplicativo Master ativo" in text:
-                  required_panel_markers = [
-                      "userRole === 'master'",
-                      "? 'Painel Master'",
-                      ": 'Painel do Líder'",
-                      "label: 'Membros'",
-                      "view: 'members' as View",
-                      "ACESSAR GESTÃO DE MEMBROS",
-                  ]
-          
-                  missing_panel_markers = [
-                      marker for marker in required_panel_markers
-                      if marker not in text
-                  ]
-          
-                  if missing_panel_markers:
-                      raise SystemExit(
-                          "ERRO: correção do painel incompleta. Marcadores ausentes: "
-                          + ", ".join(missing_panel_markers)
-                      )
-          
-                  APP_PATH.write_text(text, encoding="utf-8")
-                  print(
-                      "Master já estava ativo; visibilidade do painel "
-                      "foi revisada e corrigida."
-                  )
-                  return
-          
-              text = patch_master_identity(text)
-              text = patch_panel_visibility(text)
-              text = patch_members_visibility(text)
-              text = patch_shared_bulletin(text)
-              text = patch_shared_events_message(text)
-          
-              required_markers = [
-                  "const MASTER_EMAIL =",
-                  "const isMaster =",
-                  "Aplicativo Master ativo",
-                  "PUBLICAR PARA TODOS OS MEMBROS",
-                  "worshipProgram",
-                  "Sincronizado com os membros",
-                  "userRole === 'master'",
-                  "? 'Painel Master'",
-                  ": 'Painel do Líder'",
-                  "label: 'Membros'",
-                  "view: 'members' as View",
-                  "ACESSAR GESTÃO DE MEMBROS",
-              ]
-          
-              missing_markers = [
-                  marker for marker in required_markers
-                  if marker not in text
-              ]
-          
-              if missing_markers:
-                  raise SystemExit(
-                      "ERRO: revisão Master incompleta. Marcadores ausentes: "
-                      + ", ".join(missing_markers)
-                  )
-          
-              APP_PATH.write_text(text, encoding="utf-8")
-          
-              print("Revisão aplicada:", VERSION)
-              print("Conta Master configurada:", MASTER_EMAIL)
-              print("Boletim sincronizado pelo Firebase.")
-              print("Eventos da Agenda confirmados em tempo real.")
-              print("Versão Master V4 com Membros visível aplicada com sucesso.")
-          
-          
-          if __name__ == "__main__":
-              main()
-          PYMASTER
-
-          python3 -m py_compile \
-            aplicar-igreja-batista-eden-master-v4.py
-
-          echo "Master V4 com Membros visível criado e revisado."
-
-      - name: Aplicar visual Igreja Batista Éden
-        run: |
-          if [ ! -f "aplicar-unidade-viva.py" ]; then
-            echo "ERRO: aplicar-unidade-viva.py não foi encontrado na raiz."
-            exit 1
-          fi
-
-          if [ ! -f "aplicar-igreja-batista-eden-v2.py" ]; then
-            echo "ERRO: aplicar-igreja-batista-eden-v2.py não foi encontrado na raiz."
-            exit 1
-          fi
-
-          if [ ! -f "aplicar-igreja-batista-eden-v4.py" ]; then
-            echo "ERRO: aplicar-igreja-batista-eden-v4.py não foi encontrado na raiz."
-            exit 1
-          fi
-
-          python3 aplicar-unidade-viva.py
-
-          # Corrigir automaticamente a versão v2 antes de executá-la.
-          # A versão enviada ao repositório contém barras duplicadas no regex
-          # e três nomes de ícones que não existem no import atual do App.tsx.
-          python3 <<'PY'
-          from pathlib import Path
-
-          script_path = Path("aplicar-igreja-batista-eden-v2.py")
-          script_text = script_path.read_text(encoding="utf-8")
-
-          replacements = [
-              (
-                  '    r"(?:^|\\\\n)\\\\s*const\\\\s+handleCreateMember\\\\s*=\\\\s*async\\\\s*"',
-                  '    r"(?:^|\\n)\\s*const\\s+handleCreateMember\\s*=\\s*async\\s*"'
-              ),
-              (
-                  '    r"\\\\(e:\\\\s*React\\\\.FormEvent\\\\)\\\\s*=>\\\\s*\\\\{.*?"',
-                  '    r"\\(e:\\s*React\\.FormEvent\\)\\s*=>\\s*\\{.*?"'
-              ),
-              (
-                  '    r"(?:^|\\\\n)\\\\s*const\\\\s+handleFetchNews\\\\s*=\\\\s*async"',
-                  '    r"(?:^|\\n)\\s*const\\s+handleFetchNews\\s*=\\s*async"'
-              ),
-              ("icon: HandHeart,", "icon: Heart,"),
-              ("icon: Phone,", "icon: MessageCircle,"),
-              ("icon: Globe2,", "icon: Languages,")
-          ]
-
-          for old, new in replacements:
-              if old in script_text:
-                  script_text = script_text.replace(old, new, 1)
-              elif new not in script_text:
-                  raise SystemExit(
-                      "ERRO: não foi possível corrigir um trecho do script v2."
-                  )
-
-          compile(
-              script_text,
-              str(script_path),
-              "exec"
-          )
-
-          script_path.write_text(
-              script_text,
-              encoding="utf-8"
-          )
-
-          print("Script Igreja Batista Éden v2 corrigido e validado.")
-          PY
-
-          python3 aplicar-igreja-batista-eden-v2.py
-          python3 aplicar-igreja-batista-eden-v4.py
-          python3 aplicar-igreja-batista-eden-master-v4.py
-
-          if [ ! -f "public/igreja-batista-eden-logo.png" ]; then
-            echo "ERRO: o logotipo da Igreja Batista Éden não foi criado."
-            exit 1
-          fi
-
-          grep -q "Igreja Batista Éden" src/App.tsx
-          grep -q "case 'attendance':" src/App.tsx
-          grep -q "Marcar Presença" src/App.tsx
-          grep -q "Notícias de Fé" src/App.tsx
-          grep -q "Ministérios" src/App.tsx
-          grep -q "Eventos" src/App.tsx
-          grep -q "Pregações" src/App.tsx
-          grep -q "case 'bulletin-program':" src/App.tsx
-          grep -q "Programação do Culto" src/App.tsx
-
-          if grep -q "Comunidade Vida" src/App.tsx; then
-            echo "ERRO: ainda existe o nome Comunidade Vida no aplicativo."
-            exit 1
-          fi
-
-          grep -q "Aplicativo Master ativo" src/App.tsx
-          grep -q "PUBLICAR PARA TODOS OS MEMBROS" src/App.tsx
-          grep -q "Sincronizado com os membros" src/App.tsx
-          grep -q "worshipProgram" src/App.tsx
-          grep -q "gilmarcoutobrito@gmail.com" src/App.tsx
-          grep -q "userRole === 'master'" src/App.tsx
-          grep -q "'Painel Master'" src/App.tsx
-          grep -q "'Painel do Líder'" src/App.tsx
-          grep -q "label: 'Membros'" src/App.tsx
-          grep -q "view: 'members' as View" src/App.tsx
-          grep -q "ACESSAR GESTÃO DE MEMBROS" src/App.tsx
-          grep -q "setActiveView('members')" src/App.tsx
-
-          MEMBROS_HOME_COUNT=$(grep -o "label: 'Membros'" src/App.tsx | wc -l)
-
-          if [ "$MEMBROS_HOME_COUNT" -lt 1 ]; then
-            echo "ERRO: o acesso Membros não foi criado."
-            exit 1
-          fi
-
-          PAINEL_MASTER_COUNT=$(grep -o "'Painel Master'" src/App.tsx | wc -l)
-
-          if [ "$PAINEL_MASTER_COUNT" -lt 2 ]; then
-            echo "ERRO: Painel Master não foi liberado nos dois menus."
-            exit 1
-          fi
-
-          echo "Visual e versão Master V4 da Igreja Batista Éden aplicados e revisados."
-
-      - name: Revisar arquivos antes da compilação
-        run: |
-          python3 -m py_compile \
-            aplicar-unidade-viva.py \
-            aplicar-igreja-batista-eden-v2.py \
-            aplicar-igreja-batista-eden-v4.py \
-            aplicar-igreja-batista-eden-master-v4.py
-
-          node -e "JSON.parse(require('fs').readFileSync('package.json', 'utf8')); console.log('package.json válido.')"
-
-          if [ ! -s "public/igreja-batista-eden-logo.png" ]; then
-            echo "ERRO: logotipo público ausente ou vazio."
-            exit 1
-          fi
-
-          echo "Revisão dos arquivos concluída."
-
-      - name: Compilar aplicativo web
-        run: npm run build
-
-      - name: Criar projeto Android
-        run: |
-          rm -rf android
-
-          npx cap add android
-
-          if [ ! -f "google-services.json" ]; then
-            echo "ERRO: google-services.json não foi encontrado."
-            exit 1
-          fi
-
-          cp google-services.json \
-            android/app/google-services.json
-
-          python3 <<'PY'
-          from pathlib import Path
-
-          variables_path = Path(
-              "android/variables.gradle"
-          )
-
-          if not variables_path.exists():
-              raise SystemExit(
-                  "ERRO: android/variables.gradle não foi encontrado."
-              )
-
-          variables_text = variables_path.read_text(
-              encoding="utf-8"
-          )
-
-          additions = []
-
-          if "rgcfaIncludeGoogle" not in variables_text:
-              additions.append(
-                  "    rgcfaIncludeGoogle = true"
-              )
-
-          if "androidxCredentialsVersion" not in variables_text:
-              additions.append(
-                  "    androidxCredentialsVersion = '1.3.0'"
-              )
-
-          if additions:
-              if "ext {" not in variables_text:
-                  raise SystemExit(
-                      "ERRO: bloco ext não encontrado "
-                      "em variables.gradle."
-                  )
-
-              insertion = "ext {\n" + "\n".join(additions)
-
-              variables_text = variables_text.replace(
-                  "ext {",
-                  insertion,
-                  1
-              )
-
-              variables_path.write_text(
-                  variables_text,
-                  encoding="utf-8"
-              )
-
-          print(
-              "Dependências nativas do Google configuradas."
-          )
-          PY
-
-          npx cap update android
-          npx cap sync android
-
-          python3 aplicar-igreja-batista-eden-v2.py --android-only
-          python3 aplicar-igreja-batista-eden-v4.py --android-only
-
-      - name: Verificar plugin dentro do Android
-        run: |
-          PLUGIN_FILE="android/app/src/main/assets/capacitor.plugins.json"
-
-          if [ ! -f "$PLUGIN_FILE" ]; then
-            PLUGIN_FILE=$(find android \
-              -type f \
-              -name "capacitor.plugins.json" \
-              | head -n 1)
-          fi
-
-          if [ -z "$PLUGIN_FILE" ] || [ ! -f "$PLUGIN_FILE" ]; then
-            echo "ERRO: capacitor.plugins.json não foi encontrado."
-            exit 1
-          fi
-
-          echo "Arquivo de plugins:"
-          echo "$PLUGIN_FILE"
-          cat "$PLUGIN_FILE"
-
-          if ! grep -q \
-            "@capacitor-firebase/authentication" \
-            "$PLUGIN_FILE"; then
-            echo "ERRO: Firebase Authentication não entrou no APK."
-            exit 1
-          fi
-
-          if ! grep -q \
-            "capacitor-firebase-authentication" \
-            android/capacitor.settings.gradle; then
-            echo "ERRO: módulo Android do Firebase não foi registrado."
-            exit 1
-          fi
-
-          if ! grep -q \
-            "capacitor-firebase-authentication" \
-            android/app/capacitor.build.gradle; then
-            echo "ERRO: dependência Android do Firebase está ausente."
-            exit 1
-          fi
-
-          echo "FirebaseAuthentication incorporado ao Android."
-
-      - name: Verificar configuração Firebase Android
-        run: |
-          if [ ! -f "android/app/google-services.json" ]; then
-            echo "ERRO: google-services.json não foi copiado."
-            exit 1
-          fi
-
-          if ! grep -q \
-            '"com.jsonia.appeden"' \
-            android/app/google-services.json; then
-            echo "ERRO: pacote Android incorreto no Firebase."
-            exit 1
-          fi
-
-          if ! grep -q \
-            "rgcfaIncludeGoogle" \
-            android/variables.gradle; then
-            echo "ERRO: rgcfaIncludeGoogle não foi configurado."
-            exit 1
-          fi
-
-          if ! grep -q \
-            "androidxCredentialsVersion" \
-            android/variables.gradle; then
-            echo "ERRO: androidxCredentialsVersion está ausente."
-            exit 1
-          fi
-
-          if ! grep -q \
-            '"google.com"' \
-            android/app/src/main/assets/capacitor.config.json; then
-            echo "ERRO: provedor Google ausente na configuração."
-            exit 1
-          fi
-
-          echo "Configuração Firebase Android confirmada."
-
-      - name: Restaurar chave de assinatura
-        env:
-          ANDROID_KEYSTORE_BASE64: "${{ secrets.ANDROID_KEYSTORE_BASE64 }}"
-          ANDROID_KEYSTORE_PASSWORD: "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
-          ANDROID_KEY_ALIAS: "${{ secrets.ANDROID_KEY_ALIAS }}"
-          ANDROID_KEY_PASSWORD: "${{ secrets.ANDROID_KEY_PASSWORD }}"
-        run: |
-          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
-            echo "ERRO: Secret ANDROID_KEYSTORE_BASE64 ausente."
-            exit 1
-          fi
-
-          if [ -z "$ANDROID_KEYSTORE_PASSWORD" ]; then
-            echo "ERRO: Secret ANDROID_KEYSTORE_PASSWORD ausente."
-            exit 1
-          fi
-
-          if [ -z "$ANDROID_KEY_ALIAS" ]; then
-            echo "ERRO: Secret ANDROID_KEY_ALIAS ausente."
-            exit 1
-          fi
-
-          if [ -z "$ANDROID_KEY_PASSWORD" ]; then
-            echo "ERRO: Secret ANDROID_KEY_PASSWORD ausente."
-            exit 1
-          fi
-
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" \
-            | base64 --decode \
-            > android/app/app-eden-upload.jks
-
-          keytool -list \
-            -keystore android/app/app-eden-upload.jks \
-            -storepass "$ANDROID_KEYSTORE_PASSWORD" \
-            -alias "$ANDROID_KEY_ALIAS" \
-            > /dev/null
-
-          echo "Chave de assinatura restaurada."
-
-      - name: Configurar Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Compilar APK assinado
-        working-directory: android
-        env:
-          ANDROID_KEYSTORE_PASSWORD: "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
-          ANDROID_KEY_ALIAS: "${{ secrets.ANDROID_KEY_ALIAS }}"
-          ANDROID_KEY_PASSWORD: "${{ secrets.ANDROID_KEY_PASSWORD }}"
-        run: |
-          chmod +x gradlew
-
-          ./gradlew assembleRelease \
-            --no-daemon \
-            --stacktrace \
-            "-Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/android/app/app-eden-upload.jks" \
-            "-Pandroid.injected.signing.store.password=$ANDROID_KEYSTORE_PASSWORD" \
-            "-Pandroid.injected.signing.key.alias=$ANDROID_KEY_ALIAS" \
-            "-Pandroid.injected.signing.key.password=$ANDROID_KEY_PASSWORD"
-
-      - name: Verificar e preparar APK
-        run: |
-          mkdir -p saida
-
-          APK_ORIGINAL=$(find \
-            android/app/build/outputs/apk/release \
-            -maxdepth 1 \
-            -type f \
-            -name "*.apk" \
-            | head -n 1)
-
-          if [ -z "$APK_ORIGINAL" ]; then
-            echo "ERRO: APK não foi encontrado."
-            exit 1
-          fi
-
-          BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" \
-            -mindepth 1 \
-            -maxdepth 1 \
-            -type d \
-            | sort -V \
-            | tail -n 1)
-
-          if [ -z "$BUILD_TOOLS" ]; then
-            echo "ERRO: Android Build Tools não encontrado."
-            exit 1
-          fi
-
-          "$BUILD_TOOLS/apksigner" verify \
-            --verbose \
-            --print-certs \
-            "$APK_ORIGINAL"
-
-          cp "$APK_ORIGINAL" \
-            saida/Igreja-Batista-Eden-release.apk
-
-          echo "APK Igreja Batista Éden assinado e verificado com sucesso."
-
-      - name: Publicar APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: Igreja-Batista-Eden-APK-Assinado
-          path: saida/Igreja-Batista-Eden-release.apk
-          retention-days: 30
-          if-no-files-found: error
-          
+                    </div>
+                  </div>
+                </div>
+
+'''
+        text = replace_once(
+            text,
+            content_marker,
+            content_marker + status_box,
+            "ERRO: área de conteúdo do boletim não encontrada."
+        )
+
+    old_button = '''                <button
+                  type="button"
+                  onClick={saveBulletinProgram}
+                  className="w-full min-h-[56px] rounded-2xl bg-[#0C5A9D] text-white text-sm font-black tracking-wide"
+                >
+                  SALVAR PROGRAMAÇÃO
+                </button>'''
+
+    new_button = '''                {isAdmin ? (
+                  <button
+                    type="button"
+                    onClick={saveBulletinProgram}
+                    disabled={bulletinIsPublishing}
+                    className="w-full min-h-[56px] rounded-2xl bg-[#0C5A9D] text-white text-sm font-black tracking-wide disabled:opacity-50"
+                  >
+                    {bulletinIsPublishing
+                      ? 'PUBLICANDO PARA TODOS...'
+                      : 'PUBLICAR PARA TODOS OS MEMBROS'}
+                  </button>
+                ) : (
+                  <div className="rounded-2xl bg-slate-100 p-4 text-center text-xs font-bold text-slate-600">
+                    Este boletim é preenchido pela liderança.
+                    Os dados são atualizados automaticamente.
+                  </div>
+                )}'''
+
+    text = replace_once(
+        text,
+        old_button,
+        new_button,
+        "ERRO: botão de salvar o boletim não encontrado."
+    )
+
+    return text
+
+
+def patch_shared_events_message(text: str) -> str:
+    old_agenda_save = """      setShowAgendaForm(false);
+      setNewAgendaItem({ title: '', time: '', date: '', description: '' });"""
+
+    new_agenda_save = """      setShowAgendaForm(false);
+      setNewAgendaItem({
+        title: '',
+        time: '',
+        date: '',
+        description: ''
+      });
+
+      alert(
+        'Evento publicado. Ele aparecerá automaticamente ' +
+        'no aplicativo dos membros.'
+      );"""
+
+    if old_agenda_save in text:
+        text = text.replace(old_agenda_save, new_agenda_save, 1)
+
+    return text
+
+
+def main() -> None:
+    if not APP_PATH.exists():
+        raise SystemExit("ERRO: src/App.tsx não foi encontrado.")
+
+    text = APP_PATH.read_text(encoding="utf-8")
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+
+    # Corrigir sempre os acessos do painel e de Membros,
+    # inclusive quando uma versão Master anterior já estiver ativa.
+    text = patch_panel_visibility(text)
+    text = patch_members_visibility(text)
+
+    if "Aplicativo Master ativo" in text:
+        required_panel_markers = [
+            "userRole === 'master'",
+            "? 'Painel Master'",
+            ": 'Painel do Líder'",
+            "label: 'Membros'",
+            "view: 'members' as View",
+            "ACESSAR GESTÃO DE MEMBROS",
+        ]
+
+        missing_panel_markers = [
+            marker for marker in required_panel_markers
+            if marker not in text
+        ]
+
+        if missing_panel_markers:
+            raise SystemExit(
+                "ERRO: correção do painel incompleta. Marcadores ausentes: "
+                + ", ".join(missing_panel_markers)
+            )
+
+        APP_PATH.write_text(text, encoding="utf-8")
+        print(
+            "Master já estava ativo; visibilidade do painel "
+            "foi revisada e corrigida."
+        )
+        return
+
+    text = patch_master_identity(text)
+    text = patch_panel_visibility(text)
+    text = patch_members_visibility(text)
+    text = patch_shared_bulletin(text)
+    text = patch_shared_events_message(text)
+
+    required_markers = [
+        "const MASTER_EMAIL =",
+        "const isMaster =",
+        "Aplicativo Master ativo",
+        "PUBLICAR PARA TODOS OS MEMBROS",
+        "worshipProgram",
+        "Sincronizado com os membros",
+        "userRole === 'master'",
+        "? 'Painel Master'",
+        ": 'Painel do Líder'",
+        "label: 'Membros'",
+        "view: 'members' as View",
+        "ACESSAR GESTÃO DE MEMBROS",
+    ]
+
+    missing_markers = [
+        marker for marker in required_markers
+        if marker not in text
+    ]
+
+    if missing_markers:
+        raise SystemExit(
+            "ERRO: revisão Master incompleta. Marcadores ausentes: "
+            + ", ".join(missing_markers)
+        )
+
+    APP_PATH.write_text(text, encoding="utf-8")
+
+    print("Revisão aplicada:", VERSION)
+    print("Conta Master configurada:", MASTER_EMAIL)
+    print("Boletim sincronizado pelo Firebase.")
+    print("Eventos da Agenda confirmados em tempo real.")
+    print("Versão Master V4 com Membros visível aplicada com sucesso.")
+
+
+if __name__ == "__main__":
+    main()
