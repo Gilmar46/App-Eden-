@@ -1,0 +1,632 @@
+# DESTINO EXATO:
+# RAIZ DO REPOSITÓRIO
+#
+# NOME EXATO NO GITHUB:
+# aplicar-igreja-batista-eden-master-v2.py
+#
+# NÃO COLE ESTE CONTEÚDO EM .github/workflows/compilar-apk.yml
+#
+from pathlib import Path
+import re
+
+APP_PATH = Path("src/App.tsx")
+MASTER_EMAIL = "gilmarcoutobrito@gmail.com"
+VERSION = "master-v4-membros-visivel"
+
+
+def replace_once(text: str, old: str, new: str, error: str) -> str:
+    if old not in text:
+        raise SystemExit(error)
+    return text.replace(old, new, 1)
+
+
+def patch_master_identity(text: str) -> str:
+    if "const MASTER_EMAIL =" not in text:
+        marker = "export default function App() {"
+        text = replace_once(
+            text,
+            marker,
+            f"const MASTER_EMAIL = '{MASTER_EMAIL}';\n\n{marker}",
+            "ERRO: início principal do aplicativo não encontrado."
+        )
+
+    user_marker = "  const [user, loading, error] = useAuthState(auth);"
+    if "const isMaster =" not in text:
+        text = replace_once(
+            text,
+            user_marker,
+            user_marker + """
+  const isMaster =
+    user?.email?.toLowerCase().trim() === MASTER_EMAIL;""",
+            "ERRO: estado de autenticação não encontrado."
+        )
+
+    text = text.replace(
+        "useState<'admin' | 'lider' | 'membro'>('membro')",
+        "useState<'master' | 'admin' | 'lider' | 'membro'>('membro')",
+        1
+    )
+
+    text = text.replace(
+        "normalizedEmail === 'gilmarcoutobrito@gmail.com'",
+        "normalizedEmail === MASTER_EMAIL"
+    )
+
+    old_profile_block = """        if (!memberSnap.empty) {
+          const memberData = memberSnap.docs[0].data() as Member;
+          setUserRole(memberData.userType || 'membro');
+          setUserDepartmentId(memberData.departmentId || null);
+          if (memberData.userType === 'admin') setIsAdmin(true);
+        } else if (user.email === 'gilmarcoutobrito@gmail.com') {
+          setUserRole('admin');
+          setIsAdmin(true);
+        } else {
+          setUserRole('membro');
+        }"""
+
+    new_profile_block = """        if (
+          user.email?.toLowerCase().trim() === MASTER_EMAIL
+        ) {
+          setUserRole('master');
+          setIsAdmin(true);
+          setUserDepartmentId(null);
+        } else if (!memberSnap.empty) {
+          const memberData =
+            memberSnap.docs[0].data() as Member;
+
+          setUserRole(
+            memberData.userType || 'membro'
+          );
+
+          setUserDepartmentId(
+            memberData.departmentId || null
+          );
+
+          if (memberData.userType === 'admin') {
+            setIsAdmin(true);
+          }
+        } else {
+          setUserRole('membro');
+        }"""
+
+    if old_profile_block in text:
+        text = text.replace(
+            old_profile_block,
+            new_profile_block,
+            1
+        )
+
+    admin_case_index = text.find("      case 'admin':")
+    if admin_case_index == -1:
+        raise SystemExit("ERRO: tela administrativa não encontrada.")
+
+    admin_segment = text[admin_case_index:]
+
+    if "if (!isAdminUnlocked && !isMaster)" not in admin_segment:
+        if "if (!isAdminUnlocked)" not in admin_segment:
+            raise SystemExit(
+                "ERRO: bloqueio por senha administrativa não foi encontrado."
+            )
+
+        admin_segment = admin_segment.replace(
+            "if (!isAdminUnlocked)",
+            "if (!isAdminUnlocked && !isMaster)",
+            1
+        )
+
+    admin_segment = admin_segment.replace(
+        '<h1 className="text-4xl font-black text-slate-900 tracking-tighter italic">Painel de Liderança</h1>',
+        '''<div>
+                <h1 className="text-4xl font-black text-slate-900 tracking-tighter italic">
+                  {isMaster
+                    ? 'Painel Master'
+                    : 'Painel de Liderança'}
+                </h1>
+
+                {isMaster && (
+                  <p className="mt-2 text-xs font-black text-[#0C5A9D]">
+                    Master: {MASTER_EMAIL}
+                  </p>
+                )}
+              </div>''',
+        1
+    )
+
+    master_panel_marker = (
+        '          <motion.div initial={{ opacity: 0 }} '
+        'animate={{ opacity: 1 }} '
+        'className="pb-24 max-w-2xl mx-auto px-4 pt-12">\n'
+    )
+
+    if "PUBLICAÇÃO CENTRALIZADA" not in admin_segment:
+        master_panel = '''            {isMaster && (
+              <div className="mb-7 rounded-[28px] bg-gradient-to-br from-[#082F56] to-[#0C5A9D] p-6 text-white shadow-xl shadow-blue-900/15">
+                <div className="flex items-start gap-4">
+                  <div className="w-14 h-14 shrink-0 rounded-2xl bg-white/15 flex items-center justify-center">
+                    <ShieldCheck className="w-8 h-8" />
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.22em] text-white/70">
+                      PUBLICAÇÃO CENTRALIZADA
+                    </p>
+
+                    <h2 className="mt-1 text-xl font-black">
+                      Aplicativo Master ativo
+                    </h2>
+
+                    <p className="mt-2 text-sm leading-relaxed text-white/85">
+                      O boletim publicado nesta conta será salvo no
+                      Firebase e aparecerá nos aplicativos dos membros.
+                      Os eventos cadastrados na Agenda também são
+                      sincronizados automaticamente.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+'''
+
+        if master_panel_marker not in admin_segment:
+            raise SystemExit("ERRO: abertura do Painel Master não encontrada.")
+
+        admin_segment = admin_segment.replace(
+            master_panel_marker,
+            master_panel_marker + master_panel,
+            1
+        )
+
+    return text[:admin_case_index] + admin_segment
+
+
+
+def patch_panel_visibility(text: str) -> str:
+    """Mostra o painel para Master, administrador e líder."""
+
+    mobile_old = """                (userRole === 'admin' || userRole === 'lider') ? { icon: Settings, label: 'Painel do Líder', info: 'Gestão ministerial', view: 'admin' } : null,"""
+
+    mobile_new = """                (
+                  userRole === 'master' ||
+                  userRole === 'admin' ||
+                  userRole === 'lider'
+                ) ? {
+                  icon: Settings,
+                  label: isMaster
+                    ? 'Painel Master'
+                    : 'Painel do Líder',
+                  info: isMaster
+                    ? 'Administração geral'
+                    : 'Gestão ministerial',
+                  view: 'admin'
+                } : null,"""
+
+    if mobile_old in text:
+        text = text.replace(
+            mobile_old,
+            mobile_new,
+            1
+        )
+    elif "label: isMaster\n                    ? 'Painel Master'" not in text:
+        raise SystemExit(
+            "ERRO: botão do painel no menu Mais não foi encontrado."
+        )
+
+    desktop_old = """          {(userRole === 'admin' || userRole === 'lider') && <SidebarItem active={activeView === 'admin'} icon={Settings} label="Painel do Líder" onClick={() => setActiveView('admin')} />}"""
+
+    desktop_new = """          {(
+            userRole === 'master' ||
+            userRole === 'admin' ||
+            userRole === 'lider'
+          ) && (
+            <SidebarItem
+              active={activeView === 'admin'}
+              icon={Settings}
+              label={
+                isMaster
+                  ? 'Painel Master'
+                  : 'Painel do Líder'
+              }
+              onClick={() => setActiveView('admin')}
+            />
+          )}"""
+
+    if desktop_old in text:
+        text = text.replace(
+            desktop_old,
+            desktop_new,
+            1
+        )
+    elif "label={\n                isMaster\n                  ? 'Painel Master'" not in text:
+        raise SystemExit(
+            "ERRO: botão do painel na barra lateral não foi encontrado."
+        )
+
+    home_button_old = """                  Painel Administrativo
+                </button>"""
+
+    home_button_new = """                  {isMaster
+                    ? 'Painel Master'
+                    : 'Painel Administrativo'}
+                </button>"""
+
+    if home_button_old in text:
+        text = text.replace(
+            home_button_old,
+            home_button_new,
+            1
+        )
+
+    return text
+
+
+def patch_members_visibility(text: str) -> str:
+    """Exibe Membros na entrada, em Explorar e no Painel Master."""
+
+    # 1. Adicionar Membros aos quadrinhos da tela inicial.
+    home_start = text.find("      case 'home': {")
+    home_end = text.find("        return (", home_start)
+
+    if home_start == -1 or home_end == -1:
+        raise SystemExit(
+            "ERRO: tela inicial não encontrada para adicionar Membros."
+        )
+
+    home_segment = text[home_start:home_end]
+
+    if (
+        "label: 'Membros'" not in home_segment
+        or "setActiveView('members')" not in home_segment
+    ):
+        events_tile = """          {
+            label: 'Eventos',
+            icon: CalendarDays,
+            background:
+              'bg-gradient-to-br from-[#EAF4FF] to-[#DBECFA]',
+            iconColor: 'text-[#0C5A9D]',
+            onClick: () => setActiveView('events')
+          }"""
+
+        members_and_events = """          {
+            label: 'Membros',
+            icon: Users,
+            background:
+              'bg-gradient-to-br from-[#E7F3FC] to-[#D5E9F7]',
+            iconColor: 'text-[#0C5A9D]',
+            onClick: () => setActiveView('members')
+          },
+          {
+            label: 'Eventos',
+            icon: CalendarDays,
+            background:
+              'bg-gradient-to-br from-[#EAF4FF] to-[#DBECFA]',
+            iconColor: 'text-[#0C5A9D]',
+            onClick: () => setActiveView('events')
+          }"""
+
+        if events_tile not in home_segment:
+            raise SystemExit(
+                "ERRO: quadrinho Eventos não encontrado "
+                "para inserir Membros na tela inicial."
+            )
+
+        home_segment = home_segment.replace(
+            events_tile,
+            members_and_events,
+            1
+        )
+
+        text = (
+            text[:home_start]
+            + home_segment
+            + text[home_end:]
+        )
+
+    # 2. Adicionar Membros à página Explorar do celular.
+    more_start = text.find("      case 'more': {")
+    more_end = text.find("      case 'news':", more_start)
+
+    if more_start == -1 or more_end == -1:
+        raise SystemExit(
+            "ERRO: página Explorar não encontrada."
+        )
+
+    more_segment = text[more_start:more_end]
+
+    if "view: 'members' as View" not in more_segment:
+        ministry_item = """          { label: 'Ministérios', info: 'Departamentos da igreja', icon: Users, view: 'ministry-list' as View },"""
+
+        members_and_ministry = """          { label: 'Membros', info: 'Lista, busca e cadastro', icon: Users, view: 'members' as View },
+          { label: 'Ministérios', info: 'Departamentos da igreja', icon: Users, view: 'ministry-list' as View },"""
+
+        if ministry_item not in more_segment:
+            raise SystemExit(
+                "ERRO: item Ministérios não encontrado "
+                "na página Explorar."
+            )
+
+        more_segment = more_segment.replace(
+            ministry_item,
+            members_and_ministry,
+            1
+        )
+
+        text = (
+            text[:more_start]
+            + more_segment
+            + text[more_end:]
+        )
+
+    # 3. Criar um acesso destacado no Painel Master.
+    admin_start = text.find("      case 'admin':")
+    admin_end = text.find("      case 'devotionals':", admin_start)
+
+    if admin_start == -1:
+        raise SystemExit(
+            "ERRO: Painel Master não encontrado."
+        )
+
+    if admin_end == -1:
+        admin_end = len(text)
+
+    admin_segment = text[admin_start:admin_end]
+
+    if "ACESSAR GESTÃO DE MEMBROS" not in admin_segment:
+        tabs_marker = """            <div className="flex items-center space-x-2 overflow-x-auto pb-4 mb-8 scrollbar-hide no-wrap">"""
+
+        members_shortcut = """            {(isMaster || isAdmin) && (
+              <button
+                type="button"
+                onClick={() => setAdminActiveTab('members')}
+                className="w-full mb-5 min-h-[58px] rounded-2xl bg-[#0C5A9D] text-white font-black flex items-center justify-center gap-3 shadow-lg shadow-blue-900/15"
+              >
+                <Users className="w-6 h-6" />
+                ACESSAR GESTÃO DE MEMBROS
+              </button>
+            )}
+
+"""
+
+        if tabs_marker not in admin_segment:
+            raise SystemExit(
+                "ERRO: abas do Painel Master não encontradas."
+            )
+
+        admin_segment = admin_segment.replace(
+            tabs_marker,
+            members_shortcut + tabs_marker,
+            1
+        )
+
+        text = (
+            text[:admin_start]
+            + admin_segment
+            + text[admin_end:]
+        )
+
+    return text
+
+def patch_shared_bulletin(text: str) -> str:
+    local_block_pattern = re.compile(
+        r"  const \[bulletinPrelude, setBulletinPrelude\].*?"
+        r"  const saveBulletinProgram = \(\) => \{.*?"
+        r"\n  \};",
+        re.DOTALL
+    )
+
+    shared_block = r'''  const [bulletinPrelude, setBulletinPrelude] =
+    useState('');
+
+  const [bulletinGreeting, setBulletinGreeting] =
+    useState('');
+
+  const [bulletinHymn, setBulletinHymn] =
+    useState('');
+
+  const [bulletinReading, setBulletinReading] =
+    useState('');
+
+  const [bulletinPraise, setBulletinPraise] =
+    useState('');
+
+  const [bulletinOffering, setBulletinOffering] =
+    useState('');
+
+  const [bulletinMessage, setBulletinMessage] =
+    useState('');
+
+  const [bulletinBlessing, setBulletinBlessing] =
+    useState('');
+
+  const [
+    bulletinUpdatedBy,
+    setBulletinUpdatedBy
+  ] = useState('');
+
+  const [
+    bulletinUpdatedAt,
+    setBulletinUpdatedAt
+  ] = useState('');
+
+  const [
+    bulletinIsPublishing,
+    setBulletinIsPublishing
+  ] = useState(false);
+
+  const saveBulletinProgram = async () => {
+    if (!isAdmin) {
+      window.alert(
+        'Somente a conta Master ou um administrador ' +
+        'pode publicar o boletim.'
+      );
+      return;
+    }
+
+    setBulletinIsPublishing(true);
+
+    try {
+      const worshipProgram = {
+        preludio: bulletinPrelude.trim(),
+        saudacaoOracao: bulletinGreeting.trim(),
+        hinoCongregacional: bulletinHymn.trim(),
+        leituraBiblica: bulletinReading.trim(),
+        momentoLouvor: bulletinPraise.trim(),
+        dizimosOfertas: bulletinOffering.trim(),
+        mensagemBiblica: bulletinMessage.trim(),
+        bencaoFinal: bulletinBlessing.trim(),
+        published: true,
+        updatedBy:
+          user?.displayName ||
+          user?.email ||
+          MASTER_EMAIL,
+        updatedByEmail:
+          user?.email || MASTER_EMAIL,
+        updatedAt: Timestamp.now()
+      };
+
+      await setDoc(
+        doc(db, 'config', 'church'),
+        { worshipProgram },
+        { merge: true }
+      );
+
+      await addActivityLog(
+        'Boletim Publicado',
+        'Programação do culto publicada para todos os membros.'
+      );
+
+      window.alert(
+        'Boletim publicado. Ele aparecerá no aplicativo ' +
+        'dos outros membros.'
+      );
+    } catch (error) {
+      console.error(
+        'Erro ao publicar boletim:',
+        error
+      );
+
+      window.alert(
+        'Não foi possível publicar o boletim. ' +
+        'Verifique a conexão e as permissões do Firebase.'
+      );
+    } finally {
+      setBulletinIsPublishing(false);
+    }
+  };'''
+
+    text, count = local_block_pattern.subn(shared_block, text, count=1)
+    if count != 1:
+        raise SystemExit("ERRO: formulário local do boletim não foi encontrado.")
+
+    config_marker = (
+        "        if (data.adminSecret) "
+        "setAdminSecretState(data.adminSecret);"
+    )
+
+    config_sync = r'''
+        if (data.worshipProgram) {
+          const program = data.worshipProgram;
+
+          setBulletinPrelude(program.preludio || '');
+          setBulletinGreeting(program.saudacaoOracao || '');
+          setBulletinHymn(program.hinoCongregacional || '');
+          setBulletinReading(program.leituraBiblica || '');
+          setBulletinPraise(program.momentoLouvor || '');
+          setBulletinOffering(program.dizimosOfertas || '');
+          setBulletinMessage(program.mensagemBiblica || '');
+          setBulletinBlessing(program.bencaoFinal || '');
+          setBulletinUpdatedBy(program.updatedBy || '');
+
+          if (program.updatedAt?.toDate) {
+            setBulletinUpdatedAt(
+              program.updatedAt.toDate().toLocaleString('pt-BR')
+            );
+          } else {
+            setBulletinUpdatedAt('');
+          }
+        }'''
+
+    if "if (data.worshipProgram)" not in text:
+        text = replace_once(
+            text,
+            config_marker,
+            config_marker + config_sync,
+            "ERRO: sincronização das configurações da igreja não foi encontrada."
+        )
+
+    for state_name in (
+        "bulletinPrelude",
+        "bulletinGreeting",
+        "bulletinHymn",
+        "bulletinReading",
+        "bulletinPraise",
+        "bulletinOffering",
+        "bulletinMessage",
+        "bulletinBlessing",
+    ):
+        text = text.replace(
+            f"<input value={{{state_name}}}",
+            f"<input readOnly={{!isAdmin}} value={{{state_name}}}",
+            1
+        )
+
+    content_marker = (
+        '              <div className="p-5 sm:p-7 '
+        'space-y-4 bg-[#FFFEFB]">\n'
+    )
+
+    if "Sincronizado com os membros" not in text:
+        status_box = '''                <div className="rounded-2xl border border-[#CFE1EF] bg-[#EFF7FC] p-4">
+                  <div className="flex items-start gap-3">
+                    <CheckCircle2 className="w-6 h-6 shrink-0 text-emerald-600" />
+
+                    <div>
+                      <p className="text-sm font-black text-[#0A3158]">
+                        Sincronizado com os membros
+                      </p>
+
+                      <p className="mt-1 text-xs leading-relaxed text-slate-600">
+                        {bulletinUpdatedAt
+                          ? `Última publicação: ${bulletinUpdatedAt}`
+                          : 'Nenhum boletim foi publicado ainda.'}
+                      </p>
+
+                      {bulletinUpdatedBy && (
+                        <p className="mt-1 text-xs font-bold text-slate-500">
+                          Publicado por: {bulletinUpdatedBy}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+'''
+        text = replace_once(
+            text,
+            content_marker,
+            content_marker + status_box,
+            "ERRO: área de conteúdo do boletim não encontrada."
+        )
+
+    old_button = '''                <button
+                  type="button"
+                  onClick={saveBulletinProgram}
+                  className="w-full min-h-[56px] rounded-2xl bg-[#0C5A9D] text-white text-sm font-black tracking-wide"
+                >
+                  SALVAR PROGRAMAÇÃO
+                </button>'''
+
+    new_button = '''                {isAdmin ? (
+                  <button
+                    type="button"
+                    onClick={saveBulletinProgram}
+                    disabled={bulletinIsPublishing}
+                    className="w-full min-h-[56px] rounded-2xl bg-[#0C5A9D] text-white text-sm font-black tracking-wide disabled:opacity-50"
+                  >
+                    {bulletinIsPublishing
+                      ? 'PUBLICANDO PARA TODOS...'
+                      : 'PUBLICAR PARA TODOS OS MEMBROS'}
+                  </button>
+                ) : (
+                  <div className="rounded-2xl bg-slate-100 p-4 text-center text-xs font-bold text-slate-600">
+                    Este boletim é pree
