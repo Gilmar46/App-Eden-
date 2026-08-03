@@ -1,3 +1,11 @@
+# DESTINO EXATO:
+# RAIZ DO REPOSITÓRIO
+#
+# NOME EXATO NO GITHUB:
+# aplicar-igreja-batista-eden-master-v2.py
+#
+# NÃO COLE ESTE CONTEÚDO EM .github/workflows/compilar-apk.yml
+#
 from pathlib import Path
 import re
 
