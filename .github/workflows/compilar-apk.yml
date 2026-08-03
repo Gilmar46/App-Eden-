@@ -1,274 +1,751 @@
-# IGREJA BATISTA EDEN - MASTER V2 ATUALIZACAO COMPLETA
-# Destino: raiz do repositorio
-# Nome no GitHub: aplicar-igreja-batista-eden-master-v2.py
-# Nao coloque em .github/workflows.
+name: Compilar APK Igreja Batista Éden
 
-from __future__ import annotations
+on:
+  workflow_dispatch:
 
-import base64
-import zlib
+  push:
+    branches:
+      - main
 
-PAYLOAD_PARTS = [
-    "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",
-]
+permissions:
+  contents: read
 
-payload = base64.b64decode(''.join(PAYLOAD_PARTS))
-source = zlib.decompress(payload).decode('utf-8')
+jobs:
+  compilar-apk:
+    name: Gerar APK Igreja Batista Éden
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
 
-compiled = compile(
-    source,
-    'aplicar-igreja-batista-eden-master-v2-interno.py',
-    'exec',
-)
+    steps:
+      - name: Baixar código do repositório
+        uses: actions/checkout@v4
 
-exec(
-    compiled,
-    {
-        '__name__': '__main__',
-        '__file__': __file__,
-    },
-)
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Configurar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Instalar dependências do aplicativo
+        run: npm ci
+
+      - name: Instalar e registrar Capacitor e login Google
+        run: |
+          npm install --save-exact \
+            @capacitor/core@8 \
+            @capacitor/android@8 \
+            @capacitor-firebase/authentication@8
+
+          npm install --save-dev --save-exact \
+            @capacitor/cli@8
+
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+
+          const packageJson = JSON.parse(
+            fs.readFileSync('package.json', 'utf8')
+          );
+
+          const dependencies = [
+            '@capacitor/core',
+            '@capacitor/android',
+            '@capacitor-firebase/authentication'
+          ];
+
+          for (const dependency of dependencies) {
+            if (!packageJson.dependencies?.[dependency]) {
+              console.error(
+                `ERRO: ${dependency} não foi registrado no package.json.`
+              );
+              process.exit(1);
+            }
+          }
+
+          if (!packageJson.devDependencies?.['@capacitor/cli']) {
+            console.error(
+              'ERRO: @capacitor/cli não foi registrado no package.json.'
+            );
+            process.exit(1);
+          }
+
+          console.log(
+            'Capacitor e Firebase Authentication registrados corretamente.'
+          );
+          NODE
+
+      - name: Criar configuração Android
+        run: |
+          cat > capacitor.config.ts <<'EOF'
+          /// <reference types="@capacitor-firebase/authentication" />
+
+          import type { CapacitorConfig } from '@capacitor/cli';
+
+          const config: CapacitorConfig = {
+            appId: 'com.jsonia.appeden',
+            appName: 'Igreja Batista Éden',
+            webDir: 'dist',
+
+            server: {
+              androidScheme: 'https'
+            },
+
+            android: {
+              allowMixedContent: false
+            },
+
+            plugins: {
+              FirebaseAuthentication: {
+                skipNativeAuth: true,
+                providers: ['google.com']
+              }
+            }
+          };
+
+          export default config;
+          EOF
+
+      - name: Adaptar login Google para Android
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+
+          app_path = Path("src/App.tsx")
+
+          if not app_path.exists():
+              raise SystemExit(
+                  "ERRO: src/App.tsx não foi encontrado."
+              )
+
+          text = app_path.read_text(encoding="utf-8")
+
+          auth_import_pattern = re.compile(
+              r"import\s*\{[^}]*\}\s*"
+              r"from\s*['\"]firebase/auth['\"]\s*;",
+              re.DOTALL
+          )
+
+          auth_match = auth_import_pattern.search(text)
+
+          if not auth_match:
+              raise SystemExit(
+                  "ERRO: import do Firebase Auth não foi encontrado."
+              )
+
+          old_auth_import = auth_match.group(0)
+
+          required_names = [
+              "signInWithPopup",
+              "GoogleAuthProvider",
+              "signOut",
+              "onAuthStateChanged",
+              "FirebaseUser"
+          ]
+
+          for name in required_names:
+              if name not in old_auth_import:
+                  raise SystemExit(
+                      f"ERRO: {name} não foi encontrado "
+                      "no import do Firebase Auth."
+                  )
+
+          new_auth_import = """import {
+            signInWithPopup,
+            signInWithCredential,
+            GoogleAuthProvider,
+            signOut,
+            onAuthStateChanged,
+            User as FirebaseUser
+          } from 'firebase/auth';
+          import { Capacitor } from '@capacitor/core';
+          import {
+            FirebaseAuthentication
+          } from '@capacitor-firebase/authentication';"""
+
+          text = (
+              text[:auth_match.start()]
+              + new_auth_import
+              + text[auth_match.end():]
+          )
+
+          helper = """
+          const describeGoogleAuthError = (error: unknown) => {
+            const authError = error as {
+              code?: string;
+              message?: string;
+            };
+
+            return {
+              code: authError?.code || 'sem código',
+              message:
+                authError?.message ||
+                String(error) ||
+                'Erro desconhecido'
+            };
+          };
+
+          const signInWithGoogleCompat = async () => {
+            try {
+              if (Capacitor.isNativePlatform()) {
+                if (
+                  !Capacitor.isPluginAvailable(
+                    'FirebaseAuthentication'
+                  )
+                ) {
+                  throw new Error(
+                    'O plugin FirebaseAuthentication não está ' +
+                    'disponível neste APK.'
+                  );
+                }
+
+                const result =
+                  await FirebaseAuthentication.signInWithGoogle();
+
+                const idToken =
+                  result.credential?.idToken || null;
+
+                const accessToken =
+                  result.credential?.accessToken || null;
+
+                if (!idToken && !accessToken) {
+                  throw new Error(
+                    'O Google não forneceu uma credencial válida.'
+                  );
+                }
+
+                const credential =
+                  GoogleAuthProvider.credential(
+                    idToken,
+                    accessToken
+                  );
+
+                await signInWithCredential(
+                  auth,
+                  credential
+                );
+
+                return;
+              }
+
+              const provider =
+                new GoogleAuthProvider();
+
+              await signInWithPopup(
+                auth,
+                provider
+              );
+            } catch (error) {
+              const details =
+                describeGoogleAuthError(error);
+
+              console.error(
+                'Erro completo do login Google:',
+                error
+              );
+
+              window.alert(
+                'Falha no login Google.\\n\\n' +
+                'Código: ' + details.code + '\\n\\n' +
+                'Mensagem: ' + details.message
+              );
+            }
+          };
+
+          """
+
+          marker = "// --- Main App ---"
+
+          if marker not in text:
+              raise SystemExit(
+                  "ERRO: marcador principal do aplicativo "
+                  "não foi encontrado."
+              )
+
+          text = text.replace(
+              marker,
+              helper + marker,
+              1
+          )
+
+          login_view_pattern = re.compile(
+              r"const handleLogin = async \(\) => \{\s*"
+              r"const provider = new GoogleAuthProvider\(\);\s*"
+              r"try \{\s*"
+              r"await signInWithPopup\(auth,\s*provider\);"
+          )
+
+          login_view_replacement = """const handleLogin = async () => {
+              try {
+                await signInWithGoogleCompat();"""
+
+          text, login_view_count = (
+              login_view_pattern.subn(
+                  login_view_replacement,
+                  text,
+                  count=1
+              )
+          )
+
+          if login_view_count != 1:
+              raise SystemExit(
+                  "ERRO: botão de login da tela inicial "
+                  "não foi encontrado."
+              )
+
+          google_login_pattern = re.compile(
+              r"const handleGoogleLogin = async \(\) => \{\s*"
+              r"const provider = new GoogleAuthProvider\(\);\s*"
+              r"try \{\s*"
+              r"await signInWithPopup\(auth,\s*provider\);"
+          )
+
+          google_login_replacement = """const handleGoogleLogin = async () => {
+              try {
+                await signInWithGoogleCompat();"""
+
+          text, google_login_count = (
+              google_login_pattern.subn(
+                  google_login_replacement,
+                  text,
+                  count=1
+              )
+          )
+
+          if google_login_count != 1:
+              raise SystemExit(
+                  "ERRO: segundo botão de login Google "
+                  "não foi encontrado."
+              )
+
+          sign_out_pattern = re.compile(
+              r"const handleSignOut\s*=\s*"
+              r"\(\)\s*=>\s*signOut\(auth\);"
+          )
+
+          new_sign_out = """const handleSignOut = async () => {
+              if (Capacitor.isNativePlatform()) {
+                try {
+                  await FirebaseAuthentication.signOut();
+                } catch (error) {
+                  console.warn(
+                    'Não foi possível encerrar a sessão nativa:',
+                    error
+                  );
+                }
+              }
+
+              await signOut(auth);
+            };"""
+
+          text, sign_out_count = sign_out_pattern.subn(
+              new_sign_out,
+              text,
+              count=1
+          )
+
+          if sign_out_count != 1:
+              raise SystemExit(
+                  "ERRO: função de sair não foi encontrada."
+              )
+
+          app_path.write_text(
+              text,
+              encoding="utf-8"
+          )
+
+          print("Import do Firebase Auth atualizado.")
+          print("Login inicial atualizado:", login_view_count)
+          print("Segundo login atualizado:", google_login_count)
+          print("Função de sair atualizada:", sign_out_count)
+          print("Login Google Android adaptado com sucesso.")
+          PY
+
+      - name: Aplicar visual Igreja Batista Éden
+        run: |
+          if [ ! -f "aplicar-unidade-viva.py" ]; then
+            echo "ERRO: aplicar-unidade-viva.py não foi encontrado na raiz."
+            exit 1
+          fi
+
+          if [ ! -f "aplicar-igreja-batista-eden-v2.py" ]; then
+            echo "ERRO: aplicar-igreja-batista-eden-v2.py não foi encontrado na raiz."
+            exit 1
+          fi
+
+          if [ ! -f "aplicar-igreja-batista-eden-v4.py" ]; then
+            echo "ERRO: aplicar-igreja-batista-eden-v4.py não foi encontrado na raiz."
+            exit 1
+          fi
+
+          if [ ! -f "aplicar-igreja-batista-eden-master-v2.py" ]; then
+            echo "ERRO: aplicar-igreja-batista-eden-master-v2.py não foi encontrado na raiz."
+            exit 1
+          fi
+
+          python3 aplicar-unidade-viva.py
+
+          # Corrigir automaticamente a versão v2 antes de executá-la.
+          # A versão enviada ao repositório contém barras duplicadas no regex
+          # e três nomes de ícones que não existem no import atual do App.tsx.
+          python3 <<'PY'
+          from pathlib import Path
+
+          script_path = Path("aplicar-igreja-batista-eden-v2.py")
+          script_text = script_path.read_text(encoding="utf-8")
+
+          replacements = [
+              (
+                  '    r"(?:^|\\\\n)\\\\s*const\\\\s+handleCreateMember\\\\s*=\\\\s*async\\\\s*"',
+                  '    r"(?:^|\\n)\\s*const\\s+handleCreateMember\\s*=\\s*async\\s*"'
+              ),
+              (
+                  '    r"\\\\(e:\\\\s*React\\\\.FormEvent\\\\)\\\\s*=>\\\\s*\\\\{.*?"',
+                  '    r"\\(e:\\s*React\\.FormEvent\\)\\s*=>\\s*\\{.*?"'
+              ),
+              (
+                  '    r"(?:^|\\\\n)\\\\s*const\\\\s+handleFetchNews\\\\s*=\\\\s*async"',
+                  '    r"(?:^|\\n)\\s*const\\s+handleFetchNews\\s*=\\s*async"'
+              ),
+              ("icon: HandHeart,", "icon: Heart,"),
+              ("icon: Phone,", "icon: MessageCircle,"),
+              ("icon: Globe2,", "icon: Languages,")
+          ]
+
+          for old, new in replacements:
+              if old in script_text:
+                  script_text = script_text.replace(old, new, 1)
+              elif new not in script_text:
+                  raise SystemExit(
+                      "ERRO: não foi possível corrigir um trecho do script v2."
+                  )
+
+          compile(
+              script_text,
+              str(script_path),
+              "exec"
+          )
+
+          script_path.write_text(
+              script_text,
+              encoding="utf-8"
+          )
+
+          print("Script Igreja Batista Éden v2 corrigido e validado.")
+          PY
+
+          python3 aplicar-igreja-batista-eden-v2.py
+          python3 aplicar-igreja-batista-eden-v4.py
+          python3 aplicar-igreja-batista-eden-master-v2.py
+
+          if [ ! -f "public/igreja-batista-eden-logo.png" ]; then
+            echo "ERRO: o logotipo da Igreja Batista Éden não foi criado."
+            exit 1
+          fi
+
+          grep -q "Igreja Batista Éden" src/App.tsx
+          grep -q "case 'attendance':" src/App.tsx
+          grep -q "Marcar Presença" src/App.tsx
+          grep -q "Notícias de Fé" src/App.tsx
+          grep -q "Ministérios" src/App.tsx
+          grep -q "Eventos" src/App.tsx
+          grep -q "Pregações" src/App.tsx
+          grep -q "case 'bulletin-program':" src/App.tsx
+          grep -q "Programação do Culto" src/App.tsx
+
+          if grep -q "Comunidade Vida" src/App.tsx; then
+            echo "ERRO: ainda existe o nome Comunidade Vida no aplicativo."
+            exit 1
+          fi
+
+          grep -q "Aplicativo Master ativo" src/App.tsx
+          grep -q "PUBLICAR PARA TODOS OS MEMBROS" src/App.tsx
+          grep -q "Sincronizado com os membros" src/App.tsx
+          grep -q "worshipProgram" src/App.tsx
+          grep -q "gilmarcoutobrito@gmail.com" src/App.tsx
+
+          echo "Visual e versão Master V2 da Igreja Batista Éden aplicados e revisados."
+
+      - name: Revisar arquivos antes da compilação
+        run: |
+          python3 -m py_compile \
+            aplicar-unidade-viva.py \
+            aplicar-igreja-batista-eden-v2.py \
+            aplicar-igreja-batista-eden-v4.py \
+            aplicar-igreja-batista-eden-master-v2.py
+
+          node -e "JSON.parse(require('fs').readFileSync('package.json', 'utf8')); console.log('package.json válido.')"
+
+          if [ ! -s "public/igreja-batista-eden-logo.png" ]; then
+            echo "ERRO: logotipo público ausente ou vazio."
+            exit 1
+          fi
+
+          echo "Revisão dos arquivos concluída."
+
+      - name: Compilar aplicativo web
+        run: npm run build
+
+      - name: Criar projeto Android
+        run: |
+          rm -rf android
+
+          npx cap add android
+
+          if [ ! -f "google-services.json" ]; then
+            echo "ERRO: google-services.json não foi encontrado."
+            exit 1
+          fi
+
+          cp google-services.json \
+            android/app/google-services.json
+
+          python3 <<'PY'
+          from pathlib import Path
+
+          variables_path = Path(
+              "android/variables.gradle"
+          )
+
+          if not variables_path.exists():
+              raise SystemExit(
+                  "ERRO: android/variables.gradle não foi encontrado."
+              )
+
+          variables_text = variables_path.read_text(
+              encoding="utf-8"
+          )
+
+          additions = []
+
+          if "rgcfaIncludeGoogle" not in variables_text:
+              additions.append(
+                  "    rgcfaIncludeGoogle = true"
+              )
+
+          if "androidxCredentialsVersion" not in variables_text:
+              additions.append(
+                  "    androidxCredentialsVersion = '1.3.0'"
+              )
+
+          if additions:
+              if "ext {" not in variables_text:
+                  raise SystemExit(
+                      "ERRO: bloco ext não encontrado "
+                      "em variables.gradle."
+                  )
+
+              insertion = "ext {\n" + "\n".join(additions)
+
+              variables_text = variables_text.replace(
+                  "ext {",
+                  insertion,
+                  1
+              )
+
+              variables_path.write_text(
+                  variables_text,
+                  encoding="utf-8"
+              )
+
+          print(
+              "Dependências nativas do Google configuradas."
+          )
+          PY
+
+          npx cap update android
+          npx cap sync android
+
+          python3 aplicar-igreja-batista-eden-v2.py --android-only
+          python3 aplicar-igreja-batista-eden-v4.py --android-only
+
+      - name: Verificar plugin dentro do Android
+        run: |
+          PLUGIN_FILE="android/app/src/main/assets/capacitor.plugins.json"
+
+          if [ ! -f "$PLUGIN_FILE" ]; then
+            PLUGIN_FILE=$(find android \
+              -type f \
+              -name "capacitor.plugins.json" \
+              | head -n 1)
+          fi
+
+          if [ -z "$PLUGIN_FILE" ] || [ ! -f "$PLUGIN_FILE" ]; then
+            echo "ERRO: capacitor.plugins.json não foi encontrado."
+            exit 1
+          fi
+
+          echo "Arquivo de plugins:"
+          echo "$PLUGIN_FILE"
+          cat "$PLUGIN_FILE"
+
+          if ! grep -q \
+            "@capacitor-firebase/authentication" \
+            "$PLUGIN_FILE"; then
+            echo "ERRO: Firebase Authentication não entrou no APK."
+            exit 1
+          fi
+
+          if ! grep -q \
+            "capacitor-firebase-authentication" \
+            android/capacitor.settings.gradle; then
+            echo "ERRO: módulo Android do Firebase não foi registrado."
+            exit 1
+          fi
+
+          if ! grep -q \
+            "capacitor-firebase-authentication" \
+            android/app/capacitor.build.gradle; then
+            echo "ERRO: dependência Android do Firebase está ausente."
+            exit 1
+          fi
+
+          echo "FirebaseAuthentication incorporado ao Android."
+
+      - name: Verificar configuração Firebase Android
+        run: |
+          if [ ! -f "android/app/google-services.json" ]; then
+            echo "ERRO: google-services.json não foi copiado."
+            exit 1
+          fi
+
+          if ! grep -q \
+            '"com.jsonia.appeden"' \
+            android/app/google-services.json; then
+            echo "ERRO: pacote Android incorreto no Firebase."
+            exit 1
+          fi
+
+          if ! grep -q \
+            "rgcfaIncludeGoogle" \
+            android/variables.gradle; then
+            echo "ERRO: rgcfaIncludeGoogle não foi configurado."
+            exit 1
+          fi
+
+          if ! grep -q \
+            "androidxCredentialsVersion" \
+            android/variables.gradle; then
+            echo "ERRO: androidxCredentialsVersion está ausente."
+            exit 1
+          fi
+
+          if ! grep -q \
+            '"google.com"' \
+            android/app/src/main/assets/capacitor.config.json; then
+            echo "ERRO: provedor Google ausente na configuração."
+            exit 1
+          fi
+
+          echo "Configuração Firebase Android confirmada."
+
+      - name: Restaurar chave de assinatura
+        env:
+          ANDROID_KEYSTORE_BASE64: "${{ secrets.ANDROID_KEYSTORE_BASE64 }}"
+          ANDROID_KEYSTORE_PASSWORD: "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
+          ANDROID_KEY_ALIAS: "${{ secrets.ANDROID_KEY_ALIAS }}"
+          ANDROID_KEY_PASSWORD: "${{ secrets.ANDROID_KEY_PASSWORD }}"
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "ERRO: Secret ANDROID_KEYSTORE_BASE64 ausente."
+            exit 1
+          fi
+
+          if [ -z "$ANDROID_KEYSTORE_PASSWORD" ]; then
+            echo "ERRO: Secret ANDROID_KEYSTORE_PASSWORD ausente."
+            exit 1
+          fi
+
+          if [ -z "$ANDROID_KEY_ALIAS" ]; then
+            echo "ERRO: Secret ANDROID_KEY_ALIAS ausente."
+            exit 1
+          fi
+
+          if [ -z "$ANDROID_KEY_PASSWORD" ]; then
+            echo "ERRO: Secret ANDROID_KEY_PASSWORD ausente."
+            exit 1
+          fi
+
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" \
+            | base64 --decode \
+            > android/app/app-eden-upload.jks
+
+          keytool -list \
+            -keystore android/app/app-eden-upload.jks \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" \
+            -alias "$ANDROID_KEY_ALIAS" \
+            > /dev/null
+
+          echo "Chave de assinatura restaurada."
+
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Compilar APK assinado
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
+          ANDROID_KEY_ALIAS: "${{ secrets.ANDROID_KEY_ALIAS }}"
+          ANDROID_KEY_PASSWORD: "${{ secrets.ANDROID_KEY_PASSWORD }}"
+        run: |
+          chmod +x gradlew
+
+          ./gradlew assembleRelease \
+            --no-daemon \
+            --stacktrace \
+            "-Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/android/app/app-eden-upload.jks" \
+            "-Pandroid.injected.signing.store.password=$ANDROID_KEYSTORE_PASSWORD" \
+            "-Pandroid.injected.signing.key.alias=$ANDROID_KEY_ALIAS" \
+            "-Pandroid.injected.signing.key.password=$ANDROID_KEY_PASSWORD"
+
+      - name: Verificar e preparar APK
+        run: |
+          mkdir -p saida
+
+          APK_ORIGINAL=$(find \
+            android/app/build/outputs/apk/release \
+            -maxdepth 1 \
+            -type f \
+            -name "*.apk" \
+            | head -n 1)
+
+          if [ -z "$APK_ORIGINAL" ]; then
+            echo "ERRO: APK não foi encontrado."
+            exit 1
+          fi
+
+          BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" \
+            -mindepth 1 \
+            -maxdepth 1 \
+            -type d \
+            | sort -V \
+            | tail -n 1)
+
+          if [ -z "$BUILD_TOOLS" ]; then
+            echo "ERRO: Android Build Tools não encontrado."
+            exit 1
+          fi
+
+          "$BUILD_TOOLS/apksigner" verify \
+            --verbose \
+            --print-certs \
+            "$APK_ORIGINAL"
+
+          cp "$APK_ORIGINAL" \
+            saida/Igreja-Batista-Eden-release.apk
+
+          echo "APK Igreja Batista Éden assinado e verificado com sucesso."
+
+      - name: Publicar APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Igreja-Batista-Eden-APK-Assinado
+          path: saida/Igreja-Batista-Eden-release.apk
+          retention-days: 30
+          if-no-files-found: error
+          
