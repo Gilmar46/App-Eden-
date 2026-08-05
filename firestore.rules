@@ -1,160 +1,372 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // 0. Default Deny
+    // Negação por padrão. As permissões específicas estão abaixo.
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // Phase 3: Primitives
-    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
-    function isSignedIn() { return request.auth != null; }
-    function isVerified() { return isSignedIn() && (request.auth.token.email_verified == true || request.auth.token.firebase.sign_in_provider == 'google.com'); }
-    
-    // Helper to get member data safely
-    function getMemberData(uid) {
-      return get(/databases/$(database)/documents/members/$(uid)).data;
+    function isSignedIn() {
+      return request.auth != null;
     }
-    
+
+    function isVerified() {
+      return isSignedIn() && (
+        request.auth.token.email_verified == true ||
+        request.auth.token.firebase.sign_in_provider == 'google.com'
+      );
+    }
+
+    function getMemberData(uid) {
+      return get(
+        /databases/$(database)/documents/members/$(uid)
+      ).data;
+    }
+
     function getUserType() {
-      // Use exists to avoid error if member doc doesn't exist yet
-      return exists(/databases/$(database)/documents/members/$(request.auth.uid)) 
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/members/$(request.auth.uid))
         ? getMemberData(request.auth.uid).get('userType', 'membro')
         : 'membro';
     }
-    
+
     function getUserDept() {
-      return exists(/databases/$(database)/documents/members/$(request.auth.uid))
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/members/$(request.auth.uid))
         ? getMemberData(request.auth.uid).get('departmentId', '')
         : '';
     }
-    
-    function isAdmin() { 
+
+    function isAdmin() {
       return isSignedIn() && (
         request.auth.token.email == 'gilmarcoutobrito@gmail.com' ||
+        exists(
+          /databases/$(database)/documents/admins/$(request.auth.uid)
+        ) ||
         getUserType() == 'admin'
-      ); 
+      );
     }
-    
-    function isLider() { return isSignedIn() && (getUserType() == 'lider' || isAdmin()); }
-    function isMembro() { return isSignedIn() && (getUserType() == 'membro' || isLider()); }
-    
-    function incoming() { return request.resource.data; }
-    function existing() { return resource.data; }
 
-    // Pillar 2 & 5: Validation Blueprints
+    function isLider() {
+      return isSignedIn() && (
+        getUserType() == 'lider' ||
+        isAdmin()
+      );
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
     function isValidMember(data) {
-      return data.keys().hasAll(['name', 'role', 'ministry', 'status', 'userType']) &&
-             data.name is string && data.name.size() <= 100 &&
-             data.role is string && data.role.size() <= 100 &&
-             data.userType in ['admin', 'lider', 'membro'];
+      return data.keys().hasAll([
+          'name',
+          'role',
+          'ministry',
+          'status',
+          'userType'
+        ]) &&
+        data.name is string &&
+        data.name.size() <= 100 &&
+        data.role is string &&
+        data.role.size() <= 100 &&
+        data.userType in ['admin', 'lider', 'membro'];
     }
 
     function isValidComment(data) {
-      return data.keys().hasAll(['contentId', 'userId', 'userName', 'text', 'createdAt']) &&
-             data.userId == request.auth.uid &&
-             data.text is string && data.text.size() <= 1000 &&
-             data.createdAt == request.time;
+      return data.keys().hasAll([
+          'contentId',
+          'userId',
+          'userName',
+          'text',
+          'createdAt'
+        ]) &&
+        data.userId == request.auth.uid &&
+        data.text is string &&
+        data.text.size() <= 1000 &&
+        data.createdAt == request.time;
     }
 
-    // 1. Members Collection
     match /members/{memberId} {
       allow read: if isSignedIn();
-      allow create: if (isAdmin() || request.auth.uid == memberId) && isValidMember(incoming());
-      allow update: if (isAdmin() || (isLider() && existing().departmentId == getUserDept()) || request.auth.uid == memberId) && isValidMember(incoming());
+      allow create: if (
+        isAdmin() || request.auth.uid == memberId
+      ) && isValidMember(incoming());
+      allow update: if (
+        isAdmin() ||
+        (isLider() && existing().departmentId == getUserDept()) ||
+        request.auth.uid == memberId
+      ) && isValidMember(incoming());
       allow delete: if isAdmin();
     }
 
-    // 2. Announcements
     match /announcements/{id} {
       allow read: if isSignedIn();
-      allow create: if isLider() && (incoming().departmentId == getUserDept() || isAdmin());
-      allow update: if isLider() && (existing().departmentId == getUserDept() || isAdmin());
-      allow delete: if isLider() && (existing().departmentId == getUserDept() || isAdmin());
+      allow create: if isLider() && (
+        incoming().departmentId == getUserDept() || isAdmin()
+      );
+      allow update, delete: if isLider() && (
+        existing().departmentId == getUserDept() || isAdmin()
+      );
     }
 
-    // 3. Comments
     match /comments/{id} {
       allow read: if isSignedIn();
       allow create: if isVerified() && isValidComment(incoming());
-      allow delete: if isAdmin() || (isLider() && existing().departmentId == getUserDept()) || existing().userId == request.auth.uid;
+      allow delete: if isAdmin() ||
+        (isLider() && existing().departmentId == getUserDept()) ||
+        existing().userId == request.auth.uid;
     }
 
-    // 4. Scales
     match /scales/{id} {
       allow read: if isSignedIn();
-      allow create: if isLider() && (incoming().departmentId == getUserDept() || isAdmin());
-      allow update: if (isAdmin() || (isLider() && existing().departmentId == getUserDept()) || (isSignedIn() && incoming().memberId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['status'])));
-      allow delete: if isLider() && (existing().departmentId == getUserDept() || isAdmin());
+      allow create: if isLider() && (
+        incoming().departmentId == getUserDept() || isAdmin()
+      );
+      allow update: if isAdmin() ||
+        (isLider() && existing().departmentId == getUserDept()) ||
+        (
+          isSignedIn() &&
+          incoming().memberId == request.auth.uid &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['status'])
+        );
+      allow delete: if isLider() && (
+        existing().departmentId == getUserDept() || isAdmin()
+      );
     }
 
-    // 5. Prayers
     match /prayers/{id} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isAdmin() || (isSignedIn() && incoming().diff(existing()).affectedKeys().hasOnly(['prayerCount']));
-      allow delete: if isAdmin() || existing().authorId == request.auth.uid;
+      allow read, create: if isSignedIn();
+      allow update: if isAdmin() || (
+        isSignedIn() &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['prayerCount'])
+      );
+      allow delete: if isAdmin() ||
+        existing().authorId == request.auth.uid;
     }
 
-    // 6. Devotionals
     match /devotionals/{id} {
       allow read: if isSignedIn();
       allow create: if isVerified();
-      allow update: if isAdmin() || existing().authorId == request.auth.uid;
-      allow delete: if isAdmin() || existing().authorId == request.auth.uid;
+      allow update, delete: if isAdmin() ||
+        existing().authorId == request.auth.uid;
     }
 
-    // 7. News (Admin only management)
     match /newsCache/{id} {
       allow read: if isSignedIn();
       allow write: if isAdmin();
     }
+
     match /newsFeedSources/{id} {
       allow read: if isSignedIn();
       allow write: if isAdmin();
     }
 
-    // 8. User Profiles
     match /userProfiles/{userId} {
-      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin() || isLider());
-      allow write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow read: if isSignedIn() && (
+        request.auth.uid == userId || isAdmin() || isLider()
+      );
+      allow write: if isSignedIn() && (
+        request.auth.uid == userId || isAdmin()
+      );
     }
 
-    // Other Collections
-    match /bulletins/{id} { allow read: if isSignedIn(); allow write: if isAdmin(); }
-    match /missions/{id} { allow read: if isSignedIn(); allow write: if isAdmin(); }
-    match /agenda/{id} { allow read: if isSignedIn(); allow write: if isAdmin(); }
-    match /activityLogs/{id} { 
-      allow read: if isAdmin(); 
-      allow create: if isSignedIn(); 
+    match /bulletins/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
     }
-    match /config/{id} { 
-      allow read: if isSignedIn(); 
-      allow write: if isAdmin(); 
+
+    match /missions/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
     }
+
+    match /agenda/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /activityLogs/{id} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn();
+    }
+
+    match /config/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
     match /admins/{id} {
       allow read: if isSignedIn();
       allow write: if isAdmin();
     }
-    match /financial/{id} { 
-      allow read: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid); 
-      allow create: if isSignedIn(); 
-      allow update: if isAdmin();
+
+    match /financial/{id} {
+      allow read: if isAdmin() || (
+        isSignedIn() && existing().userId == request.auth.uid
+      );
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
+    }
+
+    // Conta de mensagens vinculada ao UID real do Firebase Authentication.
+    match /memberAccounts/{accountId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() &&
+        request.auth.uid == accountId &&
+        incoming().uid == accountId;
+      allow delete: if isSignedIn() && (
+        request.auth.uid == accountId || isAdmin()
+      );
+    }
+
+    // Preferência: aprovação individual, todos ou ninguém.
+    match /messageSettings/{ownerUid} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() &&
+        request.auth.uid == ownerUid &&
+        incoming().ownerUid == ownerUid &&
+        incoming().allowMode in ['approval', 'everyone', 'nobody'];
+      allow delete: if isSignedIn() && (
+        request.auth.uid == ownerUid || isAdmin()
+      );
+    }
+
+    // Autorizações individuais concedidas pelo dono da configuração.
+    match /messagePermissions/{permissionId} {
+      allow read: if isSignedIn() && (
+        existing().ownerUid == request.auth.uid ||
+        existing().targetUid == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isSignedIn() &&
+        incoming().ownerUid == request.auth.uid &&
+        incoming().targetUid != request.auth.uid;
+      allow update: if isSignedIn() &&
+        existing().ownerUid == request.auth.uid &&
+        incoming().ownerUid == existing().ownerUid &&
+        incoming().targetUid == existing().targetUid;
+      allow delete: if isSignedIn() && (
+        existing().ownerUid == request.auth.uid || isAdmin()
+      );
+    }
+
+    // Bloqueios podem ser vistos pelos dois envolvidos para impedir o envio.
+    match /messageBlocks/{blockId} {
+      allow read: if isSignedIn() && (
+        existing().ownerUid == request.auth.uid ||
+        existing().targetUid == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isSignedIn() &&
+        incoming().ownerUid == request.auth.uid &&
+        incoming().targetUid != request.auth.uid;
+      allow update: if isSignedIn() &&
+        existing().ownerUid == request.auth.uid &&
+        incoming().ownerUid == existing().ownerUid &&
+        incoming().targetUid == existing().targetUid;
+      allow delete: if isSignedIn() && (
+        existing().ownerUid == request.auth.uid || isAdmin()
+      );
+    }
+
+    // Pedido de autorização para iniciar uma conversa.
+    match /messageRequests/{requestId} {
+      allow read: if isSignedIn() && (
+        existing().fromUid == request.auth.uid ||
+        existing().toUid == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isSignedIn() &&
+        incoming().fromUid == request.auth.uid &&
+        incoming().toUid != request.auth.uid &&
+        incoming().status == 'pending';
+      allow update: if isSignedIn() && (
+          existing().toUid == request.auth.uid || isAdmin()
+        ) &&
+        incoming().fromUid == existing().fromUid &&
+        incoming().toUid == existing().toUid &&
+        incoming().status in ['pending', 'approved', 'declined'];
+      allow delete: if isSignedIn() && (
+        existing().fromUid == request.auth.uid ||
+        existing().toUid == request.auth.uid ||
+        isAdmin()
+      );
+    }
+
+    match /chatRooms/{roomId} {
+      allow read: if isSignedIn() && (
+        request.auth.uid in existing().participants || isAdmin()
+      );
+      allow create: if isSignedIn() &&
+        incoming().participants is list &&
+        incoming().participants.size() == 2 &&
+        request.auth.uid in incoming().participants &&
+        incoming().conversationApproved == true;
+      allow update: if isSignedIn() && (
+          request.auth.uid in existing().participants || isAdmin()
+        ) &&
+        incoming().participants == existing().participants;
+      allow delete: if isSignedIn() && (
+        request.auth.uid in existing().participants || isAdmin()
+      );
+    }
+
+    match /chatRooms/{roomId}/messages/{messageId} {
+      allow read: if isSignedIn() && (
+        request.auth.uid in get(
+          /databases/$(database)/documents/chatRooms/$(roomId)
+        ).data.participants ||
+        isAdmin()
+      );
+      allow create: if isSignedIn() &&
+        incoming().senderId == request.auth.uid &&
+        incoming().roomId == roomId &&
+        incoming().text is string &&
+        incoming().text.size() > 0 &&
+        incoming().text.size() <= 2000 &&
+        request.auth.uid in get(
+          /databases/$(database)/documents/chatRooms/$(roomId)
+        ).data.participants &&
+        get(
+          /databases/$(database)/documents/chatRooms/$(roomId)
+        ).data.get('conversationApproved', false) == true;
+      allow delete: if isAdmin() || (
+        isSignedIn() && existing().senderId == request.auth.uid
+      );
+    }
+
+    // Presença individual; somente administradores consultam o painel ao vivo.
+    match /attendanceRecords/{recordId} {
+      allow read: if isAdmin() || (
+        isSignedIn() && existing().memberId == request.auth.uid
+      );
+      allow create: if isSignedIn() &&
+        incoming().memberId == request.auth.uid;
+      allow update: if isAdmin() || (
+        isSignedIn() &&
+        existing().memberId == request.auth.uid &&
+        incoming().memberId == request.auth.uid
+      );
       allow delete: if isAdmin();
     }
-    match /chatRooms/{id} { 
-      allow read: if isSignedIn() && (request.auth.uid in existing().participants || isAdmin() || (existing().get('ministry', '') != '' && isLider())); 
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && (request.auth.uid in existing().participants || isAdmin());
+
+    match /courses/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
     }
-    match /chatRooms/{roomId}/messages/{id} { 
-      allow read: if isSignedIn() && (request.auth.uid in get(/databases/$(database)/documents/chatRooms/$(roomId)).data.participants || isAdmin());
-      allow create: if isSignedIn() && (request.auth.uid in get(/databases/$(database)/documents/chatRooms/$(roomId)).data.participants);
-    }
-    match /courses/{id} { allow read: if isSignedIn(); allow write: if isAdmin(); }
-    match /enrollments/{id} { 
-      allow read: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin()); 
-      allow write: if isSignedIn() && (incoming().userId == request.auth.uid || isAdmin()); 
+
+    match /enrollments/{id} {
+      allow read: if isSignedIn() && (
+        existing().userId == request.auth.uid || isAdmin()
+      );
+      allow write: if isSignedIn() && (
+        incoming().userId == request.auth.uid || isAdmin()
+      );
     }
   }
 }
