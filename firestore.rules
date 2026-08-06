@@ -1,7 +1,7 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Negação por padrão. As permissões específicas estão abaixo.
     match /{document=**} {
       allow read, write: if false;
     }
@@ -17,6 +17,14 @@ service cloud.firestore {
       );
     }
 
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
     function getMemberData(uid) {
       return get(
         /databases/$(database)/documents/members/$(uid)
@@ -25,15 +33,41 @@ service cloud.firestore {
 
     function getUserType() {
       return isSignedIn() &&
-        exists(/databases/$(database)/documents/members/$(request.auth.uid))
+        exists(
+          /databases/$(database)/documents/members/$(request.auth.uid)
+        )
         ? getMemberData(request.auth.uid).get('userType', 'membro')
         : 'membro';
     }
 
     function getUserDept() {
       return isSignedIn() &&
-        exists(/databases/$(database)/documents/members/$(request.auth.uid))
+        exists(
+          /databases/$(database)/documents/members/$(request.auth.uid)
+        )
         ? getMemberData(request.auth.uid).get('departmentId', '')
+        : '';
+    }
+
+    function getAccountGroup() {
+      return isSignedIn() &&
+        exists(
+          /databases/$(database)/documents/memberAccounts/$(request.auth.uid)
+        )
+        ? get(
+            /databases/$(database)/documents/memberAccounts/$(request.auth.uid)
+          ).data.get('groupId', '')
+        : '';
+    }
+
+    function getAccountMemberId() {
+      return isSignedIn() &&
+        exists(
+          /databases/$(database)/documents/memberAccounts/$(request.auth.uid)
+        )
+        ? get(
+            /databases/$(database)/documents/memberAccounts/$(request.auth.uid)
+          ).data.get('memberId', '')
         : '';
     }
 
@@ -54,27 +88,24 @@ service cloud.firestore {
       );
     }
 
-    function incoming() {
-      return request.resource.data;
-    }
-
-    function existing() {
-      return resource.data;
-    }
-
     function isValidMember(data) {
       return data.keys().hasAll([
           'name',
           'role',
           'ministry',
-          'status',
-          'userType'
+          'status'
         ]) &&
         data.name is string &&
+        data.name.size() > 0 &&
         data.name.size() <= 100 &&
         data.role is string &&
         data.role.size() <= 100 &&
-        data.userType in ['admin', 'lider', 'membro'];
+        data.ministry is string &&
+        data.status is string &&
+        (
+          !data.keys().hasAny(['userType']) ||
+          data.userType in ['admin', 'lider', 'membro']
+        );
     }
 
     function isValidComment(data) {
@@ -91,60 +122,139 @@ service cloud.firestore {
         data.createdAt == request.time;
     }
 
+    function messageAllowMode(uid) {
+      return exists(
+        /databases/$(database)/documents/messageSettings/$(uid)
+      )
+        ? get(
+            /databases/$(database)/documents/messageSettings/$(uid)
+          ).data.get('allowMode', 'approval')
+        : 'approval';
+    }
+
+    function hasMessagePermission(ownerUid, targetUid) {
+      return exists(
+        /databases/$(database)/documents/messagePermissions/$(ownerUid)_$(targetUid)
+      );
+    }
+
+    function hasMessageBlock(firstUid, secondUid) {
+      return exists(
+        /databases/$(database)/documents/messageBlocks/$(firstUid)_$(secondUid)
+      ) || exists(
+        /databases/$(database)/documents/messageBlocks/$(secondUid)_$(firstUid)
+      );
+    }
+
+    function hasApprovedMessageRequest(fromUid, toUid) {
+      return exists(
+        /databases/$(database)/documents/messageRequests/$(fromUid)_$(toUid)
+      ) &&
+      get(
+        /databases/$(database)/documents/messageRequests/$(fromUid)_$(toUid)
+      ).data.get('status', '') == 'approved';
+    }
+
+    function isTwoPersonRoom(data) {
+      return data.participants is list &&
+        data.participants.size() == 2 &&
+        data.participants[0] != data.participants[1];
+    }
+
+    function otherRoomParticipant(roomData) {
+      return roomData.participants[0] == request.auth.uid
+        ? roomData.participants[1]
+        : roomData.participants[0];
+    }
+
+    function canActivateRoom(roomData) {
+      let otherUid = otherRoomParticipant(roomData);
+
+      return messageAllowMode(otherUid) == 'everyone' ||
+        hasMessagePermission(otherUid, request.auth.uid) ||
+        (
+          hasMessagePermission(request.auth.uid, otherUid) &&
+          hasApprovedMessageRequest(otherUid, request.auth.uid)
+        );
+    }
+
     match /members/{memberId} {
       allow read: if isSignedIn();
+
       allow create: if (
-        isAdmin() || request.auth.uid == memberId
-      ) && isValidMember(incoming());
-      allow update: if (
         isAdmin() ||
-        (isLider() && existing().departmentId == getUserDept()) ||
         request.auth.uid == memberId
       ) && isValidMember(incoming());
+
+      allow update: if (
+        isAdmin() ||
+        (
+          isLider() &&
+          existing().get('departmentId', '') == getUserDept()
+        ) ||
+        request.auth.uid == memberId
+      ) && isValidMember(incoming());
+
       allow delete: if isAdmin();
     }
 
     match /announcements/{id} {
       allow read: if isSignedIn();
+
       allow create: if isLider() && (
-        incoming().departmentId == getUserDept() || isAdmin()
+        incoming().get('departmentId', '') == getUserDept() ||
+        isAdmin()
       );
+
       allow update, delete: if isLider() && (
-        existing().departmentId == getUserDept() || isAdmin()
+        existing().get('departmentId', '') == getUserDept() ||
+        isAdmin()
       );
     }
 
     match /comments/{id} {
       allow read: if isSignedIn();
       allow create: if isVerified() && isValidComment(incoming());
+
       allow delete: if isAdmin() ||
-        (isLider() && existing().departmentId == getUserDept()) ||
+        (
+          isLider() &&
+          existing().get('departmentId', '') == getUserDept()
+        ) ||
         existing().userId == request.auth.uid;
     }
 
     match /scales/{id} {
       allow read: if isSignedIn();
-      allow create: if isLider() && (
-        incoming().departmentId == getUserDept() || isAdmin()
+
+      allow create: if isAdmin();
+
+      allow update: if isAdmin() || (
+        isSignedIn() &&
+        existing().get('published', false) == true &&
+        existing().get('publishedGroupId', '') ==
+          getAccountGroup() &&
+        existing().memberId == getAccountMemberId() &&
+        incoming()
+          .diff(existing())
+          .affectedKeys()
+          .hasOnly(['status', 'notes'])
       );
-      allow update: if isAdmin() ||
-        (isLider() && existing().departmentId == getUserDept()) ||
-        (
-          isSignedIn() &&
-          incoming().memberId == request.auth.uid &&
-          incoming().diff(existing()).affectedKeys().hasOnly(['status'])
-        );
-      allow delete: if isLider() && (
-        existing().departmentId == getUserDept() || isAdmin()
-      );
+
+      allow delete: if isAdmin();
     }
 
     match /prayers/{id} {
       allow read, create: if isSignedIn();
+
       allow update: if isAdmin() || (
         isSignedIn() &&
-        incoming().diff(existing()).affectedKeys().hasOnly(['prayerCount'])
+        incoming()
+          .diff(existing())
+          .affectedKeys()
+          .hasOnly(['prayerCount'])
       );
+
       allow delete: if isAdmin() ||
         existing().authorId == request.auth.uid;
     }
@@ -152,6 +262,7 @@ service cloud.firestore {
     match /devotionals/{id} {
       allow read: if isSignedIn();
       allow create: if isVerified();
+
       allow update, delete: if isAdmin() ||
         existing().authorId == request.auth.uid;
     }
@@ -168,10 +279,14 @@ service cloud.firestore {
 
     match /userProfiles/{userId} {
       allow read: if isSignedIn() && (
-        request.auth.uid == userId || isAdmin() || isLider()
+        request.auth.uid == userId ||
+        isAdmin() ||
+        isLider()
       );
+
       allow write: if isSignedIn() && (
-        request.auth.uid == userId || isAdmin()
+        request.auth.uid == userId ||
+        isAdmin()
       );
     }
 
@@ -193,6 +308,7 @@ service cloud.firestore {
     match /activityLogs/{id} {
       allow read: if isAdmin();
       allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
     }
 
     match /config/{id} {
@@ -207,90 +323,126 @@ service cloud.firestore {
 
     match /financial/{id} {
       allow read: if isAdmin() || (
-        isSignedIn() && existing().userId == request.auth.uid
+        isSignedIn() &&
+        existing().userId == request.auth.uid
       );
+
       allow create: if isSignedIn();
       allow update, delete: if isAdmin();
     }
 
-    // Conta de mensagens vinculada ao UID real do Firebase Authentication.
     match /memberAccounts/{accountId} {
       allow read: if isSignedIn();
+
       allow create, update: if isSignedIn() &&
         request.auth.uid == accountId &&
         incoming().uid == accountId;
+
       allow delete: if isSignedIn() && (
-        request.auth.uid == accountId || isAdmin()
+        request.auth.uid == accountId ||
+        isAdmin()
       );
     }
 
-    // Preferência: aprovação individual, todos ou ninguém.
     match /messageSettings/{ownerUid} {
       allow read: if isSignedIn();
+
       allow create, update: if isSignedIn() &&
         request.auth.uid == ownerUid &&
         incoming().ownerUid == ownerUid &&
-        incoming().allowMode in ['approval', 'everyone', 'nobody'];
+        incoming().allowMode in [
+          'approval',
+          'everyone',
+          'nobody'
+        ];
+
       allow delete: if isSignedIn() && (
-        request.auth.uid == ownerUid || isAdmin()
+        request.auth.uid == ownerUid ||
+        isAdmin()
       );
     }
 
-    // Autorizações individuais concedidas pelo dono da configuração.
     match /messagePermissions/{permissionId} {
       allow read: if isSignedIn() && (
         existing().ownerUid == request.auth.uid ||
         existing().targetUid == request.auth.uid ||
         isAdmin()
       );
+
       allow create: if isSignedIn() &&
         incoming().ownerUid == request.auth.uid &&
-        incoming().targetUid != request.auth.uid;
+        incoming().targetUid != request.auth.uid &&
+        !hasMessageBlock(
+          incoming().ownerUid,
+          incoming().targetUid
+        );
+
       allow update: if isSignedIn() &&
         existing().ownerUid == request.auth.uid &&
         incoming().ownerUid == existing().ownerUid &&
-        incoming().targetUid == existing().targetUid;
+        incoming().targetUid == existing().targetUid &&
+        !hasMessageBlock(
+          incoming().ownerUid,
+          incoming().targetUid
+        );
+
       allow delete: if isSignedIn() && (
-        existing().ownerUid == request.auth.uid || isAdmin()
+        existing().ownerUid == request.auth.uid ||
+        isAdmin()
       );
     }
 
-    // Bloqueios podem ser vistos pelos dois envolvidos para impedir o envio.
     match /messageBlocks/{blockId} {
       allow read: if isSignedIn() && (
         existing().ownerUid == request.auth.uid ||
         existing().targetUid == request.auth.uid ||
         isAdmin()
       );
+
       allow create: if isSignedIn() &&
         incoming().ownerUid == request.auth.uid &&
         incoming().targetUid != request.auth.uid;
+
       allow update: if isSignedIn() &&
         existing().ownerUid == request.auth.uid &&
         incoming().ownerUid == existing().ownerUid &&
         incoming().targetUid == existing().targetUid;
+
       allow delete: if isSignedIn() && (
-        existing().ownerUid == request.auth.uid || isAdmin()
+        existing().ownerUid == request.auth.uid ||
+        isAdmin()
       );
     }
 
-    // Pedido de autorização para iniciar uma conversa.
     match /messageRequests/{requestId} {
       allow read: if isSignedIn() && (
         existing().fromUid == request.auth.uid ||
         existing().toUid == request.auth.uid ||
         isAdmin()
       );
+
       allow create: if isSignedIn() &&
         incoming().fromUid == request.auth.uid &&
         incoming().toUid != request.auth.uid &&
-        incoming().status == 'pending';
+        incoming().status == 'pending' &&
+        messageAllowMode(incoming().toUid) != 'nobody' &&
+        !hasMessageBlock(
+          incoming().fromUid,
+          incoming().toUid
+        );
+
       allow update: if isSignedIn() && (
-          existing().toUid == request.auth.uid || isAdmin()
+          existing().toUid == request.auth.uid ||
+          isAdmin()
         ) &&
         incoming().fromUid == existing().fromUid &&
         incoming().toUid == existing().toUid &&
-        incoming().status in ['pending', 'approved', 'declined'];
+        incoming().status in [
+          'pending',
+          'approved',
+          'declined'
+        ];
+
       allow delete: if isSignedIn() && (
         existing().fromUid == request.auth.uid ||
         existing().toUid == request.auth.uid ||
@@ -300,19 +452,47 @@ service cloud.firestore {
 
     match /chatRooms/{roomId} {
       allow read: if isSignedIn() && (
-        request.auth.uid in existing().participants || isAdmin()
+        request.auth.uid in existing().participants ||
+        isAdmin()
       );
+
       allow create: if isSignedIn() &&
-        incoming().participants is list &&
-        incoming().participants.size() == 2 &&
+        isTwoPersonRoom(incoming()) &&
         request.auth.uid in incoming().participants &&
-        incoming().conversationApproved == true;
-      allow update: if isSignedIn() && (
-          request.auth.uid in existing().participants || isAdmin()
+        incoming().get('conversationApproved', false) == true &&
+        !hasMessageBlock(
+          incoming().participants[0],
+          incoming().participants[1]
         ) &&
-        incoming().participants == existing().participants;
+        canActivateRoom(incoming());
+
+      allow update: if isSignedIn() &&
+        request.auth.uid in existing().participants &&
+        incoming().participants == existing().participants &&
+        (
+          incoming().get('conversationApproved', false) == false ||
+          (
+            existing().get('conversationApproved', false) == true &&
+            incoming().get('conversationApproved', false) == true &&
+            !hasMessageBlock(
+              incoming().participants[0],
+              incoming().participants[1]
+            )
+          ) ||
+          (
+            existing().get('conversationApproved', false) == false &&
+            incoming().get('conversationApproved', false) == true &&
+            !hasMessageBlock(
+              incoming().participants[0],
+              incoming().participants[1]
+            ) &&
+            canActivateRoom(incoming())
+          )
+        );
+
       allow delete: if isSignedIn() && (
-        request.auth.uid in existing().participants || isAdmin()
+        request.auth.uid in existing().participants ||
+        isAdmin()
       );
     }
 
@@ -323,6 +503,7 @@ service cloud.firestore {
         ).data.participants ||
         isAdmin()
       );
+
       allow create: if isSignedIn() &&
         incoming().senderId == request.auth.uid &&
         incoming().roomId == roomId &&
@@ -334,24 +515,44 @@ service cloud.firestore {
         ).data.participants &&
         get(
           /databases/$(database)/documents/chatRooms/$(roomId)
-        ).data.get('conversationApproved', false) == true;
+        ).data.get('conversationApproved', false) == true &&
+        !hasMessageBlock(
+          request.auth.uid,
+          otherRoomParticipant(
+            get(
+              /databases/$(database)/documents/chatRooms/$(roomId)
+            ).data
+          )
+        ) &&
+        messageAllowMode(
+          otherRoomParticipant(
+            get(
+              /databases/$(database)/documents/chatRooms/$(roomId)
+            ).data
+          )
+        ) != 'nobody';
+
       allow delete: if isAdmin() || (
-        isSignedIn() && existing().senderId == request.auth.uid
+        isSignedIn() &&
+        existing().senderId == request.auth.uid
       );
     }
 
-    // Presença individual; somente administradores consultam o painel ao vivo.
     match /attendanceRecords/{recordId} {
       allow read: if isAdmin() || (
-        isSignedIn() && existing().memberId == request.auth.uid
+        isSignedIn() &&
+        existing().memberId == request.auth.uid
       );
+
       allow create: if isSignedIn() &&
         incoming().memberId == request.auth.uid;
+
       allow update: if isAdmin() || (
         isSignedIn() &&
         existing().memberId == request.auth.uid &&
         incoming().memberId == request.auth.uid
       );
+
       allow delete: if isAdmin();
     }
 
@@ -362,10 +563,13 @@ service cloud.firestore {
 
     match /enrollments/{id} {
       allow read: if isSignedIn() && (
-        existing().userId == request.auth.uid || isAdmin()
+        existing().userId == request.auth.uid ||
+        isAdmin()
       );
+
       allow write: if isSignedIn() && (
-        incoming().userId == request.auth.uid || isAdmin()
+        incoming().userId == request.auth.uid ||
+        isAdmin()
       );
     }
   }
