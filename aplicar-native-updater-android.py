@@ -1,4 +1,3 @@
-
 from pathlib import Path
 import re
 
@@ -20,7 +19,7 @@ if not MANIFEST.exists():
 JAVA_DIR.mkdir(parents=True, exist_ok=True)
 XML_DIR.mkdir(parents=True, exist_ok=True)
 
-PLUGIN_JAVA = '''package com.jsonia.appeden;
+PLUGIN_JAVA = r"""package com.jsonia.appeden;
 
 import android.content.Intent;
 import android.net.Uri;
@@ -48,6 +47,9 @@ import java.util.concurrent.Executors;
 @CapacitorPlugin(name = "NativeUpdater")
 public class NativeUpdaterPlugin extends Plugin {
 
+    private static final String UPDATE_PROVIDER_SUFFIX =
+        ".appedenupdates";
+
     private final ExecutorService executor =
         Executors.newSingleThreadExecutor();
 
@@ -70,25 +72,33 @@ public class NativeUpdaterPlugin extends Plugin {
                 .getPackageManager()
                 .canRequestPackageInstalls()
         ) {
-            Intent settingsIntent = new Intent(
-                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                Uri.parse(
-                    "package:"
-                    + getContext().getPackageName()
-                )
-            );
+            try {
+                Intent settingsIntent = new Intent(
+                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse(
+                        "package:"
+                        + getContext().getPackageName()
+                    )
+                );
 
-            settingsIntent.addFlags(
-                Intent.FLAG_ACTIVITY_NEW_TASK
-            );
+                settingsIntent.addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK
+                );
 
-            getContext().startActivity(
-                settingsIntent
-            );
+                getContext().startActivity(
+                    settingsIntent
+                );
 
-            call.reject(
-                "INSTALL_PERMISSION_REQUIRED"
-            );
+                call.reject(
+                    "INSTALL_PERMISSION_REQUIRED"
+                );
+            } catch (Exception error) {
+                call.reject(
+                    "INSTALL_PERMISSION_REQUIRED: "
+                    + error.getMessage()
+                );
+            }
+
             return;
         }
 
@@ -126,16 +136,22 @@ public class NativeUpdaterPlugin extends Plugin {
                     );
                 }
 
-                downloadFile(url, apkFile);
+                downloadFile(
+                    url,
+                    apkFile
+                );
 
                 getActivity().runOnUiThread(() -> {
                     try {
+                        String authority =
+                            getContext()
+                                .getPackageName()
+                            + UPDATE_PROVIDER_SUFFIX;
+
                         Uri apkUri =
                             FileProvider.getUriForFile(
                                 getContext(),
-                                getContext()
-                                    .getPackageName()
-                                    + ".fileprovider",
+                                authority,
                                 apkFile
                             );
 
@@ -161,10 +177,12 @@ public class NativeUpdaterPlugin extends Plugin {
 
                         JSObject result =
                             new JSObject();
+
                         result.put(
                             "size",
                             apkFile.length()
                         );
+
                         call.resolve(result);
                     } catch (Exception error) {
                         call.reject(
@@ -205,14 +223,17 @@ public class NativeUpdaterPlugin extends Plugin {
 
             connection.setConnectTimeout(20000);
             connection.setReadTimeout(90000);
+
             connection.setRequestProperty(
                 "User-Agent",
-                "App-Eden-Android-Updater/1.0"
+                "App-Eden-Android-Updater/1.1"
             );
+
             connection.setRequestProperty(
                 "Accept",
                 "application/octet-stream,*/*"
             );
+
             connection.setInstanceFollowRedirects(
                 false
             );
@@ -271,6 +292,7 @@ public class NativeUpdaterPlugin extends Plugin {
 
         long contentLength =
             connection.getContentLengthLong();
+
         long totalBytes = 0L;
         long lastProgressAt = 0L;
 
@@ -311,6 +333,7 @@ public class NativeUpdaterPlugin extends Plugin {
                         totalBytes,
                         contentLength
                     );
+
                     lastProgressAt = now;
                 }
             }
@@ -338,7 +361,11 @@ public class NativeUpdaterPlugin extends Plugin {
     ) {
         JSObject data = new JSObject();
 
-        data.put("bytes", bytes);
+        data.put(
+            "bytes",
+            bytes
+        );
+
         data.put(
             "contentLength",
             contentLength
@@ -387,26 +414,33 @@ public class NativeUpdaterPlugin extends Plugin {
         super.handleOnDestroy();
     }
 }
-'''
+"""
 
-plugin_path = JAVA_DIR / "NativeUpdaterPlugin.java"
+plugin_path = (
+    JAVA_DIR
+    / "NativeUpdaterPlugin.java"
+)
+
 plugin_path.write_text(
     PLUGIN_JAVA,
     encoding="utf-8",
 )
 
 java_main = list(
-    Path("android/app/src/main/java")
-    .rglob("MainActivity.java")
+    Path(
+        "android/app/src/main/java"
+    ).rglob("MainActivity.java")
 )
 
 kotlin_main = list(
-    Path("android/app/src/main/java")
-    .rglob("MainActivity.kt")
+    Path(
+        "android/app/src/main/java"
+    ).rglob("MainActivity.kt")
 )
 
 if java_main:
     main_path = java_main[0]
+
     text = main_path.read_text(
         encoding="utf-8"
     )
@@ -417,10 +451,12 @@ if java_main:
                 r"(?m)^package\s+[^;]+;\s*$",
                 text
             )
+
             if not package_line:
                 raise SystemExit(
                     "ERRO: package Java não encontrado."
                 )
+
             text = (
                 text[:package_line.end()]
                 + "\n\nimport android.os.Bundle;"
@@ -434,13 +470,13 @@ if java_main:
             re.DOTALL,
         )
 
-        replacement = '''public class MainActivity extends BridgeActivity {
+        replacement = """public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(NativeUpdaterPlugin.class);
         super.onCreate(savedInstanceState);
     }
-}'''
+}"""
 
         text, count = empty_class.subn(
             replacement,
@@ -454,10 +490,12 @@ if java_main:
                 r"\s*\([^)]*\)\s*\{",
                 text
             )
+
             if not on_create:
                 raise SystemExit(
                     "ERRO: onCreate Java não encontrado."
                 )
+
             text = (
                 text[:on_create.end()]
                 + "\n        registerPlugin("
@@ -473,20 +511,26 @@ if java_main:
 
 elif kotlin_main:
     main_path = kotlin_main[0]
+
     text = main_path.read_text(
         encoding="utf-8"
     )
 
-    if "NativeUpdaterPlugin::class.java" not in text:
+    if (
+        "NativeUpdaterPlugin::class.java"
+        not in text
+    ):
         if "import android.os.Bundle" not in text:
             package_line = re.search(
                 r"(?m)^package\s+[^\n]+\s*$",
                 text
             )
+
             if not package_line:
                 raise SystemExit(
                     "ERRO: package Kotlin não encontrado."
                 )
+
             text = (
                 text[:package_line.end()]
                 + "\n\nimport android.os.Bundle"
@@ -500,12 +544,12 @@ elif kotlin_main:
             re.DOTALL,
         )
 
-        replacement = '''class MainActivity : BridgeActivity() {
+        replacement = """class MainActivity : BridgeActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         registerPlugin(NativeUpdaterPlugin::class.java)
         super.onCreate(savedInstanceState)
     }
-}'''
+}"""
 
         text, count = empty_class.subn(
             replacement,
@@ -519,10 +563,12 @@ elif kotlin_main:
                 r"\s*\([^)]*\)\s*\{",
                 text
             )
+
             if not on_create:
                 raise SystemExit(
                     "ERRO: onCreate Kotlin não encontrado."
                 )
+
             text = (
                 text[:on_create.end()]
                 + "\n        registerPlugin("
@@ -552,49 +598,62 @@ permission = (
 )
 
 if permission not in manifest:
-    app_index = manifest.find(
+    application_index = manifest.find(
         "<application"
     )
-    if app_index == -1:
+
+    if application_index == -1:
         raise SystemExit(
-            "ERRO: application não encontrado."
+            "ERRO: <application> não encontrado."
         )
+
     manifest = (
-        manifest[:app_index]
+        manifest[:application_index]
         + "    "
         + permission
         + "\n\n"
-        + manifest[app_index:]
+        + manifest[application_index:]
     )
 
-if (
-    'android:name="androidx.core.content.FileProvider"'
-    not in manifest
-):
-    provider = '''
+update_authority = (
+    '${applicationId}.appedenupdates'
+)
+
+update_paths_marker = (
+    '@xml/app_eden_update_paths'
+)
+
+provider_already_correct = (
+    update_authority in manifest
+    and update_paths_marker in manifest
+)
+
+if not provider_already_correct:
+    provider = """
         <provider
             android:name="androidx.core.content.FileProvider"
-            android:authorities="${applicationId}.fileprovider"
+            android:authorities="${applicationId}.appedenupdates"
             android:exported="false"
             android:grantUriPermissions="true">
             <meta-data
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/app_eden_update_paths" />
         </provider>
-'''
+"""
 
-    close_index = manifest.find(
+    application_close = manifest.rfind(
         "</application>"
     )
-    if close_index == -1:
+
+    if application_close == -1:
         raise SystemExit(
-            "ERRO: fechamento application não encontrado."
+            "ERRO: </application> não encontrado."
         )
 
     manifest = (
-        manifest[:close_index]
+        manifest[:application_close]
         + provider
-        + manifest[close_index:]
+        + manifest[application_close:]
     )
 
 MANIFEST.write_text(
@@ -602,38 +661,92 @@ MANIFEST.write_text(
     encoding="utf-8",
 )
 
-paths_xml = '''<?xml version="1.0" encoding="utf-8"?>
+paths_xml = """<?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <cache-path
         name="app_eden_updates"
         path="app-eden-updates/" />
 </paths>
-'''
+"""
 
-(
+paths_path = (
     XML_DIR
     / "app_eden_update_paths.xml"
-).write_text(
+)
+
+paths_path.write_text(
     paths_xml,
     encoding="utf-8",
 )
 
+manifest_final = MANIFEST.read_text(
+    encoding="utf-8"
+)
+
 validations = [
-    (plugin_path, '@CapacitorPlugin(name = "NativeUpdater")'),
-    (main_path, "registerPlugin"),
-    (MANIFEST, "REQUEST_INSTALL_PACKAGES"),
-    (MANIFEST, "app_eden_update_paths"),
+    (
+        plugin_path,
+        '@CapacitorPlugin(name = "NativeUpdater")',
+    ),
+    (
+        plugin_path,
+        'UPDATE_PROVIDER_SUFFIX =',
+    ),
+    (
+        main_path,
+        "registerPlugin",
+    ),
+    (
+        MANIFEST,
+        "REQUEST_INSTALL_PACKAGES",
+    ),
+    (
+        MANIFEST,
+        '${applicationId}.appedenupdates',
+    ),
+    (
+        MANIFEST,
+        '@xml/app_eden_update_paths',
+    ),
+    (
+        paths_path,
+        '<cache-path',
+    ),
 ]
 
 for path, marker in validations:
-    if marker not in path.read_text(
+    text = path.read_text(
         encoding="utf-8"
-    ):
+    )
+
+    if marker not in text:
         raise SystemExit(
-            f"ERRO: validação nativa falhou: {path}"
+            "ERRO: validação nativa falhou: "
+            f"{path} -> {marker}"
         )
 
-print(
-    "NativeUpdater Android criado e validado."
+provider_count = manifest_final.count(
+    '${applicationId}.appedenupdates'
 )
-print("MainActivity:", main_path)
+
+if provider_count != 1:
+    raise SystemExit(
+        "ERRO: provider de atualização deveria "
+        f"aparecer 1 vez, apareceu {provider_count}."
+    )
+
+print(
+    "NativeUpdater Android corrigido e validado."
+)
+print(
+    "Authority:",
+    '${applicationId}.appedenupdates'
+)
+print(
+    "MainActivity:",
+    main_path
+)
+print(
+    "Manifest:",
+    MANIFEST
+)
