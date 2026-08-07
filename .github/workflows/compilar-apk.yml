@@ -448,6 +448,49 @@ jobs:
           python3 aplicar-igreja-batista-eden-v2.py
           python3 aplicar-igreja-batista-eden-v4.py
           python3 aplicar-igreja-batista-eden-master-v2.py
+          # APP_EDEN_MEMBROS_V53_TESTE
+          python3 <<'PYVERSION'
+          import json
+          from pathlib import Path
+
+          path = Path("app-update-build.json")
+          if not path.exists():
+              raise SystemExit(
+                  "ERRO: app-update-build.json não foi criado."
+              )
+
+          data = json.loads(path.read_text(encoding="utf-8"))
+
+          if data.get("channel") != "membros":
+              raise SystemExit(
+                  "ERRO: este teste deve ser executado no canal membros."
+              )
+
+          if data.get("releaseTag") != "app-eden-membros-latest":
+              raise SystemExit(
+                  "ERRO: canal de publicação dos membros está incorreto."
+              )
+
+          data["versionCode"] = 1053
+          data["versionName"] = "1.0.53"
+          data["notes"] = (
+              "Teste da atualização automática do App Éden. "
+              "Confirmação do aviso Nova versão disponível."
+          )
+
+          path.write_text(
+              json.dumps(
+                  data,
+                  ensure_ascii=False,
+                  indent=2
+              ) + "\n",
+              encoding="utf-8"
+          )
+
+          print("Canal:", data["channel"])
+          print("versionCode:", data["versionCode"])
+          print("versionName:", data["versionName"])
+          PYVERSION
 
           if [ ! -s "src/AppUpdate.tsx" ]; then
             echo "ERRO: src/AppUpdate.tsx não foi criado."
