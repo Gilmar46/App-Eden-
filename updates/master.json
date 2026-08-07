@@ -6,8 +6,8 @@
   "apkUrl": "https://github.com/Gilmar46/App-Eden-/releases/download/app-eden-master-latest/Igreja-Batista-Eden-MASTER.apk",
   "notes": "Faixa de notícias da tela principal ajustada para 55 segundos por ciclo.\nAtualizador automático corrigido e acesso Master preservado.",
   "mandatory": false,
-  "publishedAt": "2026-08-07T20:19:04.527462+00:00",
-  "sha256": "df7dff94f090c07d134d3e9f0295fff3fa504235a78ae5688a3d5b1e02eb578e",
+  "publishedAt": "2026-08-07T22:23:18.871186+00:00",
+  "sha256": "b43677ac38395a8a3b40db7609cc9370c599ee51057e9f8100efa8bd36fc9468",
   "releaseTag": "app-eden-master-latest",
   "assetName": "Igreja-Batista-Eden-MASTER.apk"
 }
