@@ -1,13 +1,13 @@
 {
   "channel": "membros",
   "channelLabel": "Membros",
-  "versionCode": 1063,
-  "versionName": "1.0.63",
+  "versionCode": 1064,
+  "versionName": "1.0.64",
   "apkUrl": "https://github.com/Gilmar46/App-Eden-/releases/download/app-eden-membros-latest/Igreja-Batista-Eden-MEMBROS.apk",
-  "notes": "Teste final do atualizador automático corrigido.\nSe esta versão chegar pelo próprio App Éden, o fluxo de atualização estará validado.\nCadastro, presença e demais funções preservados.",
+  "notes": "Faixa de notícias da tela principal ajustada para 55 segundos por ciclo.\nAtualizador automático corrigido e demais funções preservados.",
   "mandatory": false,
-  "publishedAt": "2026-08-07T17:33:11.350702+00:00",
-  "sha256": "e1435a1fd2072700dae2427f0950cc9e2b639a191e51f81874b510e97677bb57",
+  "publishedAt": "2026-08-07T20:17:00.544383+00:00",
+  "sha256": "8689e40a9cbdfe55e0cf029e7da94317eea6e8d8d8bfbec0d90192191df9c2e3",
   "releaseTag": "app-eden-membros-latest",
   "assetName": "Igreja-Batista-Eden-MEMBROS.apk"
 }
