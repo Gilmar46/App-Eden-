@@ -1,0 +1,13 @@
+{
+  "channel": "master",
+  "channelLabel": "Master",
+  "versionCode": 1051,
+  "versionName": "1.0.51",
+  "apkUrl": "https://github.com/Gilmar46/App-Eden-/releases/download/app-eden-master-latest/Igreja-Batista-Eden-MASTER.apk",
+  "notes": "Atualização automática do App Éden adicionada.\nNotícias da Portas Abertas em 40 segundos por ciclo.\nPlanilha de presença, mensagens, logs e escalas preservados.",
+  "mandatory": false,
+  "publishedAt": null,
+  "sha256": null,
+  "releaseTag": "app-eden-master-latest",
+  "assetName": "Igreja-Batista-Eden-MASTER.apk"
+}

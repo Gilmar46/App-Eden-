@@ -6,15 +6,17 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - 'updates/**'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   compilar-apk:
     name: Gerar APK Igreja Batista Éden
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 55
 
     steps:
       - name: Baixar código do repositório
@@ -40,6 +42,8 @@ jobs:
           npm install --save-exact \
             @capacitor/core@8 \
             @capacitor/android@8 \
+            @capacitor/app@8 \
+            @capacitor/browser@8 \
             @capacitor-firebase/authentication@8
 
           npm install --save-dev --save-exact \
@@ -55,6 +59,8 @@ jobs:
           const dependencies = [
             '@capacitor/core',
             '@capacitor/android',
+            '@capacitor/app',
+            '@capacitor/browser',
             '@capacitor-firebase/authentication'
           ];
 
@@ -75,7 +81,7 @@ jobs:
           }
 
           console.log(
-            'Capacitor e Firebase Authentication registrados corretamente.'
+            'Capacitor, atualizador e Firebase Authentication registrados corretamente.'
           );
           NODE
 
@@ -443,6 +449,23 @@ jobs:
           python3 aplicar-igreja-batista-eden-v4.py
           python3 aplicar-igreja-batista-eden-master-v2.py
 
+          if [ ! -s "src/AppUpdate.tsx" ]; then
+            echo "ERRO: src/AppUpdate.tsx não foi criado."
+            exit 1
+          fi
+
+          if [ ! -s "app-update-build.json" ]; then
+            echo "ERRO: app-update-build.json não foi criado."
+            exit 1
+          fi
+
+          grep -q "Nova versão disponível" src/AppUpdate.tsx
+          grep -q "Atualizar agora" src/AppUpdate.tsx
+          grep -q "App.getInfo" src/AppUpdate.tsx
+          grep -q "Browser.open" src/AppUpdate.tsx
+
+          node -e "JSON.parse(require('fs').readFileSync('app-update-build.json', 'utf8')); console.log('Metadados de atualização válidos.')"
+
           if [ ! -f "public/igreja-batista-eden-logo.png" ]; then
             echo "ERRO: o logotipo da Igreja Batista Éden não foi criado."
             exit 1
@@ -564,6 +587,58 @@ jobs:
           python3 aplicar-igreja-batista-eden-v2.py --android-only
           python3 aplicar-igreja-batista-eden-v4.py --android-only
 
+      - name: Configurar versão Android do canal
+        run: |
+          python3 <<'PY'
+          import json
+          import re
+          from pathlib import Path
+
+          metadata_path = Path("app-update-build.json")
+          gradle_path = Path("android/app/build.gradle")
+
+          if not metadata_path.exists():
+              raise SystemExit(
+                  "ERRO: app-update-build.json não foi encontrado."
+              )
+          if not gradle_path.exists():
+              raise SystemExit(
+                  "ERRO: android/app/build.gradle não foi encontrado."
+              )
+
+          metadata = json.loads(
+              metadata_path.read_text(encoding="utf-8")
+          )
+          version_code = int(metadata["versionCode"])
+          version_name = str(metadata["versionName"])
+          gradle_text = gradle_path.read_text(encoding="utf-8")
+
+          gradle_text, code_count = re.subn(
+              r"(?m)^(\s*)versionCode\s+\d+\s*$",
+              rf"\g<1>versionCode {version_code}",
+              gradle_text,
+              count=1,
+          )
+          gradle_text, name_count = re.subn(
+              r'(?m)^(\s*)versionName\s+["\'][^"\']*["\']\s*$',
+              rf'\g<1>versionName "{version_name}"',
+              gradle_text,
+              count=1,
+          )
+
+          if code_count != 1 or name_count != 1:
+              raise SystemExit(
+                  "ERRO: versionCode/versionName não foram localizados "
+                  "em android/app/build.gradle."
+              )
+
+          gradle_path.write_text(gradle_text, encoding="utf-8")
+          print("versionCode Android:", version_code)
+          print("versionName Android:", version_name)
+          PY
+
+          grep -E "versionCode|versionName" android/app/build.gradle
+
       - name: Verificar plugin dentro do Android
         run: |
           PLUGIN_FILE="android/app/src/main/assets/capacitor.plugins.json"
@@ -584,12 +659,15 @@ jobs:
           echo "$PLUGIN_FILE"
           cat "$PLUGIN_FILE"
 
-          if ! grep -q \
-            "@capacitor-firebase/authentication" \
-            "$PLUGIN_FILE"; then
-            echo "ERRO: Firebase Authentication não entrou no APK."
-            exit 1
-          fi
+          for PLUGIN_PACKAGE in \
+            "@capacitor/app" \
+            "@capacitor/browser" \
+            "@capacitor-firebase/authentication"; do
+            if ! grep -q "$PLUGIN_PACKAGE" "$PLUGIN_FILE"; then
+              echo "ERRO: $PLUGIN_PACKAGE não entrou no APK."
+              exit 1
+            fi
+          done
 
           if ! grep -q \
             "capacitor-firebase-authentication" \
@@ -605,7 +683,7 @@ jobs:
             exit 1
           fi
 
-          echo "FirebaseAuthentication incorporado ao Android."
+          echo "App, Browser e FirebaseAuthentication incorporados ao Android."
 
       - name: Verificar configuração Firebase Android
         run: |
@@ -736,16 +814,108 @@ jobs:
             --print-certs \
             "$APK_ORIGINAL"
 
-          cp "$APK_ORIGINAL" \
-            saida/Igreja-Batista-Eden-release.apk
+          ASSET_NAME=$(node -p \
+            "JSON.parse(require('fs').readFileSync('app-update-build.json', 'utf8')).assetName")
 
-          echo "APK Igreja Batista Éden assinado e verificado com sucesso."
+          if [ -z "$ASSET_NAME" ]; then
+            echo "ERRO: nome do APK não foi definido."
+            exit 1
+          fi
+
+          cp "$APK_ORIGINAL" "saida/$ASSET_NAME"
+          sha256sum "saida/$ASSET_NAME" > "saida/$ASSET_NAME.sha256"
+
+          echo "APK assinado e preparado: saida/$ASSET_NAME"
 
       - name: Publicar APK
         uses: actions/upload-artifact@v4
         with:
           name: Igreja-Batista-Eden-APK-Assinado
-          path: saida/Igreja-Batista-Eden-release.apk
+          path: saida/*.apk
           retention-days: 30
           if-no-files-found: error
-          
+
+      - name: Publicar atualização automática do App Éden
+        env:
+          GH_TOKEN: "${{ github.token }}"
+        run: |
+          set -euo pipefail
+
+          CHANNEL=$(node -p \
+            "JSON.parse(require('fs').readFileSync('app-update-build.json', 'utf8')).channel")
+          CHANNEL_LABEL=$(node -p \
+            "JSON.parse(require('fs').readFileSync('app-update-build.json', 'utf8')).channelLabel")
+          VERSION_CODE=$(node -p \
+            "JSON.parse(require('fs').readFileSync('app-update-build.json', 'utf8')).versionCode")
+          VERSION_NAME=$(node -p \
+            "JSON.parse(require('fs').readFileSync('app-update-build.json', 'utf8')).versionName")
+          MANIFEST_PATH=$(node -p \
+            "JSON.parse(require('fs').readFileSync('app-update-build.json', 'utf8')).manifestPath")
+          RELEASE_TAG=$(node -p \
+            "JSON.parse(require('fs').readFileSync('app-update-build.json', 'utf8')).releaseTag")
+          ASSET_NAME=$(node -p \
+            "JSON.parse(require('fs').readFileSync('app-update-build.json', 'utf8')).assetName")
+          NOTES=$(node -p \
+            "JSON.parse(require('fs').readFileSync('app-update-build.json', 'utf8')).notes")
+
+          APK_PATH="saida/$ASSET_NAME"
+          SHA256=$(sha256sum "$APK_PATH" | awk '{print $1}')
+          APK_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ASSET_NAME}"
+
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" \
+              --target "$GITHUB_SHA" \
+              --title "App Éden ${CHANNEL_LABEL}" \
+              --notes "Canal permanente de atualização do App Éden (${CHANNEL_LABEL})."
+          fi
+
+          gh release upload "$RELEASE_TAG" "$APK_PATH" --clobber
+
+          mkdir -p "$(dirname "$MANIFEST_PATH")"
+
+          export CHANNEL CHANNEL_LABEL VERSION_CODE VERSION_NAME
+          export MANIFEST_PATH RELEASE_TAG ASSET_NAME NOTES SHA256 APK_URL
+
+          python3 <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          manifest = {
+              "channel": os.environ["CHANNEL"],
+              "channelLabel": os.environ["CHANNEL_LABEL"],
+              "versionCode": int(os.environ["VERSION_CODE"]),
+              "versionName": os.environ["VERSION_NAME"],
+              "apkUrl": os.environ["APK_URL"],
+              "notes": os.environ["NOTES"],
+              "mandatory": False,
+              "publishedAt": datetime.now(timezone.utc).isoformat(),
+              "sha256": os.environ["SHA256"],
+              "releaseTag": os.environ["RELEASE_TAG"],
+              "assetName": os.environ["ASSET_NAME"],
+          }
+
+          path = Path(os.environ["MANIFEST_PATH"])
+          path.write_text(
+              json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          print(path.read_text(encoding="utf-8"))
+          PY
+
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$MANIFEST_PATH"
+
+          if git diff --cached --quiet; then
+            echo "Manifesto já estava atualizado."
+          else
+            git commit -m \
+              "Publicar atualização ${CHANNEL_LABEL} ${VERSION_NAME} [skip ci]"
+            git push origin HEAD:main
+          fi
+
+          echo "Atualização publicada: $APK_URL"
+
