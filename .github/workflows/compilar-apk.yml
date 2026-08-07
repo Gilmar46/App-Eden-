@@ -461,7 +461,9 @@ jobs:
 
           grep -q "Nova versão disponível" src/AppUpdate.tsx
           grep -q "Atualizar agora" src/AppUpdate.tsx
-          grep -q "App.getInfo" src/AppUpdate.tsx
+          grep -q "APP_UPDATE_VERSION_CODE" src/AppUpdate.tsx
+          grep -q "UPDATE_RECHECK_INTERVAL_MS" src/AppUpdate.tsx
+          grep -q "fetchUpdateManifest" src/AppUpdate.tsx
           grep -q "Browser.open" src/AppUpdate.tsx
 
           node -e "JSON.parse(require('fs').readFileSync('app-update-build.json', 'utf8')); console.log('Metadados de atualização válidos.')"
