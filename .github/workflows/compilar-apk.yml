@@ -461,10 +461,11 @@ jobs:
 
           grep -q "Nova versão disponível" src/AppUpdate.tsx
           grep -q "Atualizar agora" src/AppUpdate.tsx
+          grep -q "downloadProgress" src/AppUpdate.tsx
           grep -q "APP_UPDATE_VERSION_CODE" src/AppUpdate.tsx
           grep -q "UPDATE_RECHECK_INTERVAL_MS" src/AppUpdate.tsx
           grep -q "fetchUpdateManifest" src/AppUpdate.tsx
-          grep -q "Browser.open" src/AppUpdate.tsx
+          grep -q "NativeUpdater.downloadAndInstall" src/AppUpdate.tsx
 
           node -e "JSON.parse(require('fs').readFileSync('app-update-build.json', 'utf8')); console.log('Metadados de atualização válidos.')"
 
@@ -588,6 +589,7 @@ jobs:
 
           python3 aplicar-igreja-batista-eden-v2.py --android-only
           python3 aplicar-igreja-batista-eden-v4.py --android-only
+          python3 aplicar-native-updater-android.py
 
       - name: Configurar versão Android do canal
         run: |
