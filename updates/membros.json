@@ -6,8 +6,8 @@
   "apkUrl": "https://github.com/Gilmar46/App-Eden-/releases/download/app-eden-membros-latest/Igreja-Batista-Eden-MEMBROS.apk",
   "notes": "Atualização automática do App Éden adicionada.\nNotícias da Portas Abertas em 40 segundos por ciclo.\nPresença, mensagens, logs e escalas preservados.",
   "mandatory": false,
-  "publishedAt": null,
-  "sha256": null,
+  "publishedAt": "2026-08-07T02:15:07.698804+00:00",
+  "sha256": "4464fab205cfb13501c85fd21c4dcd478b902c9bafcf62123c82e3d20f785f69",
   "releaseTag": "app-eden-membros-latest",
   "assetName": "Igreja-Batista-Eden-MEMBROS.apk"
 }
