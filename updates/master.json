@@ -1,13 +1,13 @@
 {
   "channel": "master",
   "channelLabel": "Master",
-  "versionCode": 1052,
-  "versionName": "1.0.52",
+  "versionCode": 1053,
+  "versionName": "1.0.53",
   "apkUrl": "https://github.com/Gilmar46/App-Eden-/releases/download/app-eden-master-latest/Igreja-Batista-Eden-MASTER.apk",
-  "notes": "Botão Cadastrar adicionado à tela de entrada.\nCadastro seguro usando a conta Google.\nSomente contas autorizadas recebem acesso Master.",
+  "notes": "Atualizador automático reforçado.\nVerificação na abertura, ao voltar ao aplicativo e a cada minuto.\nCadastro e acesso Master preservados.",
   "mandatory": false,
-  "publishedAt": "2026-08-07T09:47:59.943236+00:00",
-  "sha256": "7fd3eccf80111eb9eedcdb9dd8c0445883cc7292a4e8e75ea8a89ea14b760199",
+  "publishedAt": "2026-08-07T10:05:03.147699+00:00",
+  "sha256": "69b37a8844d000ea8d44542ac2643f42a214725ae135459571fa640fbfa82c72",
   "releaseTag": "app-eden-master-latest",
   "assetName": "Igreja-Batista-Eden-MASTER.apk"
 }
