@@ -1,0 +1,946 @@
+name: Gerar AAB Play Store Igreja Batista Éden
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gerar-aab-play:
+    name: Gerar AAB Play Store Igreja Batista Éden
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+
+    steps:
+      - name: Baixar código do repositório
+        uses: actions/checkout@v5
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Configurar Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Instalar dependências do aplicativo
+        run: npm ci
+
+      - name: Instalar e registrar Capacitor e login Google
+        run: |
+          npm install --save-exact \
+            @capacitor/core@8 \
+            @capacitor/android@8 \
+            @capacitor/app@8 \
+            @capacitor/browser@8 \
+            @capacitor-firebase/authentication@8
+
+          npm install --save-dev --save-exact \
+            @capacitor/cli@8
+
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+
+          const packageJson = JSON.parse(
+            fs.readFileSync('package.json', 'utf8')
+          );
+
+          const dependencies = [
+            '@capacitor/core',
+            '@capacitor/android',
+            '@capacitor/app',
+            '@capacitor/browser',
+            '@capacitor-firebase/authentication'
+          ];
+
+          for (const dependency of dependencies) {
+            if (!packageJson.dependencies?.[dependency]) {
+              console.error(
+                `ERRO: ${dependency} não foi registrado no package.json.`
+              );
+              process.exit(1);
+            }
+          }
+
+          if (!packageJson.devDependencies?.['@capacitor/cli']) {
+            console.error(
+              'ERRO: @capacitor/cli não foi registrado no package.json.'
+            );
+            process.exit(1);
+          }
+
+          console.log(
+            'Capacitor e Firebase Authentication registrados corretamente.'
+          );
+          NODE
+
+      - name: Criar configuração Android
+        run: |
+          cat > capacitor.config.ts <<'EOF'
+          /// <reference types="@capacitor-firebase/authentication" />
+
+          import type { CapacitorConfig } from '@capacitor/cli';
+
+          const config: CapacitorConfig = {
+            appId: 'com.jsonia.appeden',
+            appName: 'Igreja Batista Éden',
+            webDir: 'dist',
+
+            server: {
+              androidScheme: 'https'
+            },
+
+            android: {
+              allowMixedContent: false
+            },
+
+            plugins: {
+              FirebaseAuthentication: {
+                skipNativeAuth: true,
+                providers: ['google.com']
+              }
+            }
+          };
+
+          export default config;
+          EOF
+
+      - name: Adaptar login Google para Android
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+
+          app_path = Path("src/App.tsx")
+
+          if not app_path.exists():
+              raise SystemExit(
+                  "ERRO: src/App.tsx não foi encontrado."
+              )
+
+          text = app_path.read_text(encoding="utf-8")
+
+          auth_import_pattern = re.compile(
+              r"import\s*\{[^}]*\}\s*"
+              r"from\s*['\"]firebase/auth['\"]\s*;",
+              re.DOTALL
+          )
+
+          auth_match = auth_import_pattern.search(text)
+
+          if not auth_match:
+              raise SystemExit(
+                  "ERRO: import do Firebase Auth não foi encontrado."
+              )
+
+          old_auth_import = auth_match.group(0)
+
+          required_names = [
+              "signInWithPopup",
+              "GoogleAuthProvider",
+              "signOut",
+              "onAuthStateChanged",
+              "FirebaseUser"
+          ]
+
+          for name in required_names:
+              if name not in old_auth_import:
+                  raise SystemExit(
+                      f"ERRO: {name} não foi encontrado "
+                      "no import do Firebase Auth."
+                  )
+
+          new_auth_import = """import {
+            signInWithPopup,
+            signInWithCredential,
+            GoogleAuthProvider,
+            signOut,
+            onAuthStateChanged,
+            User as FirebaseUser
+          } from 'firebase/auth';
+          import { Capacitor } from '@capacitor/core';
+          import {
+            FirebaseAuthentication
+          } from '@capacitor-firebase/authentication';"""
+
+          text = (
+              text[:auth_match.start()]
+              + new_auth_import
+              + text[auth_match.end():]
+          )
+
+          helper = """
+          const describeGoogleAuthError = (error: unknown) => {
+            const authError = error as {
+              code?: string;
+              message?: string;
+            };
+
+            return {
+              code: authError?.code || 'sem código',
+              message:
+                authError?.message ||
+                String(error) ||
+                'Erro desconhecido'
+            };
+          };
+
+          const signInWithGoogleCompat = async () => {
+            try {
+              if (Capacitor.isNativePlatform()) {
+                if (
+                  !Capacitor.isPluginAvailable(
+                    'FirebaseAuthentication'
+                  )
+                ) {
+                  throw new Error(
+                    'O plugin FirebaseAuthentication não está ' +
+                    'disponível neste APK.'
+                  );
+                }
+
+                const result =
+                  await FirebaseAuthentication.signInWithGoogle();
+
+                const idToken =
+                  result.credential?.idToken || null;
+
+                const accessToken =
+                  result.credential?.accessToken || null;
+
+                if (!idToken && !accessToken) {
+                  throw new Error(
+                    'O Google não forneceu uma credencial válida.'
+                  );
+                }
+
+                const credential =
+                  GoogleAuthProvider.credential(
+                    idToken,
+                    accessToken
+                  );
+
+                await signInWithCredential(
+                  auth,
+                  credential
+                );
+
+                return;
+              }
+
+              const provider =
+                new GoogleAuthProvider();
+
+              await signInWithPopup(
+                auth,
+                provider
+              );
+            } catch (error) {
+              const details =
+                describeGoogleAuthError(error);
+
+              console.error(
+                'Erro completo do login Google:',
+                error
+              );
+
+              window.alert(
+                'Falha no login Google.\\n\\n' +
+                'Código: ' + details.code + '\\n\\n' +
+                'Mensagem: ' + details.message
+              );
+            }
+          };
+
+          """
+
+          marker = "// --- Main App ---"
+
+          if marker not in text:
+              raise SystemExit(
+                  "ERRO: marcador principal do aplicativo "
+                  "não foi encontrado."
+              )
+
+          text = text.replace(
+              marker,
+              helper + marker,
+              1
+          )
+
+          login_view_pattern = re.compile(
+              r"const handleLogin = async \(\) => \{\s*"
+              r"const provider = new GoogleAuthProvider\(\);\s*"
+              r"try \{\s*"
+              r"await signInWithPopup\(auth,\s*provider\);"
+          )
+
+          login_view_replacement = """const handleLogin = async () => {
+              try {
+                await signInWithGoogleCompat();"""
+
+          text, login_view_count = (
+              login_view_pattern.subn(
+                  login_view_replacement,
+                  text,
+                  count=1
+              )
+          )
+
+          if login_view_count != 1:
+              raise SystemExit(
+                  "ERRO: botão de login da tela inicial "
+                  "não foi encontrado."
+              )
+
+          google_login_pattern = re.compile(
+              r"const handleGoogleLogin = async \(\) => \{\s*"
+              r"const provider = new GoogleAuthProvider\(\);\s*"
+              r"try \{\s*"
+              r"await signInWithPopup\(auth,\s*provider\);"
+          )
+
+          google_login_replacement = """const handleGoogleLogin = async () => {
+              try {
+                await signInWithGoogleCompat();"""
+
+          text, google_login_count = (
+              google_login_pattern.subn(
+                  google_login_replacement,
+                  text,
+                  count=1
+              )
+          )
+
+          if google_login_count != 1:
+              raise SystemExit(
+                  "ERRO: segundo botão de login Google "
+                  "não foi encontrado."
+              )
+
+          sign_out_pattern = re.compile(
+              r"const handleSignOut\s*=\s*"
+              r"\(\)\s*=>\s*signOut\(auth\);"
+          )
+
+          new_sign_out = """const handleSignOut = async () => {
+              if (Capacitor.isNativePlatform()) {
+                try {
+                  await FirebaseAuthentication.signOut();
+                } catch (error) {
+                  console.warn(
+                    'Não foi possível encerrar a sessão nativa:',
+                    error
+                  );
+                }
+              }
+
+              await signOut(auth);
+            };"""
+
+          text, sign_out_count = sign_out_pattern.subn(
+              new_sign_out,
+              text,
+              count=1
+          )
+
+          if sign_out_count != 1:
+              raise SystemExit(
+                  "ERRO: função de sair não foi encontrada."
+              )
+
+          app_path.write_text(
+              text,
+              encoding="utf-8"
+          )
+
+          print("Import do Firebase Auth atualizado.")
+          print("Login inicial atualizado:", login_view_count)
+          print("Segundo login atualizado:", google_login_count)
+          print("Função de sair atualizada:", sign_out_count)
+          print("Login Google Android adaptado com sucesso.")
+          PY
+
+      - name: Aplicar visual Igreja Batista Éden
+        run: |
+          if [ ! -f "aplicar-unidade-viva.py" ]; then
+            echo "ERRO: aplicar-unidade-viva.py não foi encontrado na raiz."
+            exit 1
+          fi
+
+          if [ ! -f "aplicar-igreja-batista-eden-v2.py" ]; then
+            echo "ERRO: aplicar-igreja-batista-eden-v2.py não foi encontrado na raiz."
+            exit 1
+          fi
+
+          if [ ! -f "aplicar-igreja-batista-eden-v4.py" ]; then
+            echo "ERRO: aplicar-igreja-batista-eden-v4.py não foi encontrado na raiz."
+            exit 1
+          fi
+
+          if [ ! -f "aplicar-igreja-batista-eden-play-v65.py" ]; then
+            echo "ERRO: aplicar-igreja-batista-eden-play-v65.py não foi encontrado na raiz."
+            exit 1
+          fi
+
+          python3 aplicar-unidade-viva.py
+
+          # Corrigir automaticamente a versão v2 antes de executá-la.
+          # A versão enviada ao repositório contém barras duplicadas no regex
+          # e três nomes de ícones que não existem no import atual do App.tsx.
+          python3 <<'PY'
+          from pathlib import Path
+
+          script_path = Path("aplicar-igreja-batista-eden-v2.py")
+          script_text = script_path.read_text(encoding="utf-8")
+
+          replacements = [
+              (
+                  '    r"(?:^|\\\\n)\\\\s*const\\\\s+handleCreateMember\\\\s*=\\\\s*async\\\\s*"',
+                  '    r"(?:^|\\n)\\s*const\\s+handleCreateMember\\s*=\\s*async\\s*"'
+              ),
+              (
+                  '    r"\\\\(e:\\\\s*React\\\\.FormEvent\\\\)\\\\s*=>\\\\s*\\\\{.*?"',
+                  '    r"\\(e:\\s*React\\.FormEvent\\)\\s*=>\\s*\\{.*?"'
+              ),
+              (
+                  '    r"(?:^|\\\\n)\\\\s*const\\\\s+handleFetchNews\\\\s*=\\\\s*async"',
+                  '    r"(?:^|\\n)\\s*const\\s+handleFetchNews\\s*=\\s*async"'
+              ),
+              ("icon: HandHeart,", "icon: Heart,"),
+              ("icon: Phone,", "icon: MessageCircle,"),
+              ("icon: Globe2,", "icon: Languages,")
+          ]
+
+          for old, new in replacements:
+              if old in script_text:
+                  script_text = script_text.replace(old, new, 1)
+              elif new not in script_text:
+                  raise SystemExit(
+                      "ERRO: não foi possível corrigir um trecho do script v2."
+                  )
+
+          compile(
+              script_text,
+              str(script_path),
+              "exec"
+          )
+
+          script_path.write_text(
+              script_text,
+              encoding="utf-8"
+          )
+
+          print("Script Igreja Batista Éden v2 corrigido e validado.")
+          PY
+
+          python3 aplicar-igreja-batista-eden-v2.py
+          python3 aplicar-igreja-batista-eden-v4.py
+          python3 aplicar-igreja-batista-eden-play-v65.py
+
+          if [ ! -s "play-store-build.json" ]; then
+            echo "ERRO: play-store-build.json não foi criado."
+            exit 1
+          fi
+
+          node -e "const d=JSON.parse(require('fs').readFileSync('play-store-build.json','utf8')); if(d.distribution!=='google-play'||d.versionCode!==1065||d.versionName!=='1.0.65'||d.targetSdk!==36||d.artifactType!=='AAB'||d.selfUpdater!==false){throw new Error('Metadados Play inválidos');} console.log('Metadados Google Play válidos.');"
+
+          if [ -e "src/AppUpdate.tsx" ]; then
+            echo "ERRO: src/AppUpdate.tsx não pode existir na edição Play."
+            exit 1
+          fi
+
+          if grep -q "import './AppUpdate';" src/App.tsx; then
+            echo "ERRO: import do atualizador externo ainda existe."
+            exit 1
+          fi
+
+          grep -q "duration: 55" src/App.tsx
+
+          if [ ! -f "public/igreja-batista-eden-logo.png" ]; then
+            echo "ERRO: o logotipo da Igreja Batista Éden não foi criado."
+            exit 1
+          fi
+
+          grep -q "Igreja Batista Éden" src/App.tsx
+          grep -q "case 'attendance':" src/App.tsx
+          grep -q "Marcar Presença" src/App.tsx
+          grep -q "Notícias de Fé" src/App.tsx
+          grep -q "Ministérios" src/App.tsx
+          grep -q "Eventos" src/App.tsx
+          grep -q "Pregações" src/App.tsx
+          grep -q "case 'bulletin-program':" src/App.tsx
+          grep -q "Programação do Culto" src/App.tsx
+
+          if grep -q "Comunidade Vida" src/App.tsx; then
+            echo "ERRO: ainda existe o nome Comunidade Vida no aplicativo."
+            exit 1
+          fi
+
+          grep -q "Aplicativo Master ativo" src/App.tsx
+          grep -q "PUBLICAR PARA TODOS OS MEMBROS" src/App.tsx
+          grep -q "Sincronizado com os membros" src/App.tsx
+          grep -q "worshipProgram" src/App.tsx
+          grep -q "gilmarcoutobrito@gmail.com" src/App.tsx
+
+          echo "Visual e versão Play V65 da Igreja Batista Éden aplicados e revisados."
+
+      - name: Revisar arquivos antes da compilação
+        run: |
+          python3 -m py_compile \
+            aplicar-unidade-viva.py \
+            aplicar-igreja-batista-eden-v2.py \
+            aplicar-igreja-batista-eden-v4.py \
+            aplicar-igreja-batista-eden-play-v65.py
+
+          node -e "JSON.parse(require('fs').readFileSync('package.json', 'utf8')); console.log('package.json válido.')"
+
+          if [ ! -s "public/igreja-batista-eden-logo.png" ]; then
+            echo "ERRO: logotipo público ausente ou vazio."
+            exit 1
+          fi
+
+          echo "Revisão dos arquivos concluída."
+
+      - name: Compilar aplicativo web
+        run: npm run build
+
+      - name: Criar projeto Android
+        run: |
+          rm -rf android
+
+          npx cap add android
+
+          if [ ! -f "google-services.json" ]; then
+            echo "ERRO: google-services.json não foi encontrado."
+            exit 1
+          fi
+
+          cp google-services.json \
+            android/app/google-services.json
+
+          python3 <<'PY'
+          from pathlib import Path
+
+          variables_path = Path(
+              "android/variables.gradle"
+          )
+
+          if not variables_path.exists():
+              raise SystemExit(
+                  "ERRO: android/variables.gradle não foi encontrado."
+              )
+
+          variables_text = variables_path.read_text(
+              encoding="utf-8"
+          )
+
+          additions = []
+
+          if "rgcfaIncludeGoogle" not in variables_text:
+              additions.append(
+                  "    rgcfaIncludeGoogle = true"
+              )
+
+          if "androidxCredentialsVersion" not in variables_text:
+              additions.append(
+                  "    androidxCredentialsVersion = '1.3.0'"
+              )
+
+          if additions:
+              if "ext {" not in variables_text:
+                  raise SystemExit(
+                      "ERRO: bloco ext não encontrado "
+                      "em variables.gradle."
+                  )
+
+              insertion = "ext {\n" + "\n".join(additions)
+
+              variables_text = variables_text.replace(
+                  "ext {",
+                  insertion,
+                  1
+              )
+
+              variables_path.write_text(
+                  variables_text,
+                  encoding="utf-8"
+              )
+
+          print(
+              "Dependências nativas do Google configuradas."
+          )
+          PY
+
+          npx cap update android
+          npx cap sync android
+
+          python3 aplicar-igreja-batista-eden-v2.py --android-only
+          python3 aplicar-igreja-batista-eden-v4.py --android-only
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+
+          variables_path = Path("android/variables.gradle")
+          manifest_path = Path(
+              "android/app/src/main/AndroidManifest.xml"
+          )
+
+          if not variables_path.exists():
+              raise SystemExit(
+                  "ERRO: android/variables.gradle não encontrado."
+              )
+
+          variables = variables_path.read_text(
+              encoding="utf-8"
+          )
+
+          variables, compile_count = re.subn(
+              r"(?m)^(\s*)compileSdkVersion\s*=\s*\d+\s*$",
+              r"\g<1>compileSdkVersion = 36",
+              variables,
+              count=1,
+          )
+          variables, target_count = re.subn(
+              r"(?m)^(\s*)targetSdkVersion\s*=\s*\d+\s*$",
+              r"\g<1>targetSdkVersion = 36",
+              variables,
+              count=1,
+          )
+
+          if compile_count != 1 or target_count != 1:
+              raise SystemExit(
+                  "ERRO: compileSdkVersion/targetSdkVersion "
+                  "não foram localizados."
+              )
+
+          variables_path.write_text(
+              variables,
+              encoding="utf-8",
+          )
+
+          if not manifest_path.exists():
+              raise SystemExit(
+                  "ERRO: AndroidManifest.xml não encontrado."
+              )
+
+          manifest = manifest_path.read_text(
+              encoding="utf-8"
+          )
+
+          # A versão da Play Store não instala APKs por fora da loja.
+          manifest = re.sub(
+              r"\s*<uses-permission\s+"
+              r'android:name="android\.permission\.REQUEST_INSTALL_PACKAGES"'
+              r"\s*/>\s*",
+              "\n",
+              manifest,
+          )
+
+          if "REQUEST_INSTALL_PACKAGES" in manifest:
+              raise SystemExit(
+                  "ERRO: permissão REQUEST_INSTALL_PACKAGES "
+                  "ainda existe na edição Play."
+              )
+
+          manifest_path.write_text(
+              manifest,
+              encoding="utf-8",
+          )
+
+          print("compileSdkVersion: 36")
+          print("targetSdkVersion: 36")
+          print("REQUEST_INSTALL_PACKAGES: removida")
+          PY
+
+      - name: Configurar versão Android Play Store
+        run: |
+          python3 <<'PY'
+          import json
+          import re
+          from pathlib import Path
+
+          metadata_path = Path("play-store-build.json")
+          gradle_path = Path("android/app/build.gradle")
+
+          if not metadata_path.exists():
+              raise SystemExit(
+                  "ERRO: play-store-build.json não foi encontrado."
+              )
+          if not gradle_path.exists():
+              raise SystemExit(
+                  "ERRO: android/app/build.gradle não foi encontrado."
+              )
+
+          metadata = json.loads(
+              metadata_path.read_text(encoding="utf-8")
+          )
+          version_code = int(metadata["versionCode"])
+          version_name = str(metadata["versionName"])
+          gradle_text = gradle_path.read_text(encoding="utf-8")
+
+          gradle_text, code_count = re.subn(
+              r"(?m)^(\s*)versionCode\s+\d+\s*$",
+              rf"\g<1>versionCode {version_code}",
+              gradle_text,
+              count=1,
+          )
+          gradle_text, name_count = re.subn(
+              r'(?m)^(\s*)versionName\s+["\'][^"\']*["\']\s*$',
+              rf'\g<1>versionName "{version_name}"',
+              gradle_text,
+              count=1,
+          )
+
+          if code_count != 1 or name_count != 1:
+              raise SystemExit(
+                  "ERRO: versionCode/versionName não foram localizados "
+                  "em android/app/build.gradle."
+              )
+
+          gradle_path.write_text(gradle_text, encoding="utf-8")
+          print("versionCode Android:", version_code)
+          print("versionName Android:", version_name)
+          PY
+
+          grep -E "versionCode|versionName" android/app/build.gradle
+
+      - name: Validar requisitos Google Play
+        run: |
+          grep -Eq "compileSdkVersion\s*=\s*36" android/variables.gradle
+          grep -Eq "targetSdkVersion\s*=\s*36" android/variables.gradle
+
+          if grep -R -q \
+            "android.permission.REQUEST_INSTALL_PACKAGES" \
+            android/app/src/main; then
+            echo "ERRO: REQUEST_INSTALL_PACKAGES encontrada."
+            exit 1
+          fi
+
+          if find android/app/src/main \
+            -type f \
+            \( -name "*NativeUpdater*" -o -name "*UpdateInstallResultReceiver*" \) \
+            | grep -q .; then
+            echo "ERRO: arquivos do instalador externo estão presentes."
+            exit 1
+          fi
+
+          if [ -e "src/AppUpdate.tsx" ]; then
+            echo "ERRO: autoatualizador externo presente."
+            exit 1
+          fi
+
+          echo "Edição Play validada para API 36 e sem instalador externo."
+
+      - name: Verificar plugin dentro do Android
+        run: |
+          PLUGIN_FILE="android/app/src/main/assets/capacitor.plugins.json"
+
+          if [ ! -f "$PLUGIN_FILE" ]; then
+            PLUGIN_FILE=$(find android \
+              -type f \
+              -name "capacitor.plugins.json" \
+              | head -n 1)
+          fi
+
+          if [ -z "$PLUGIN_FILE" ] || [ ! -f "$PLUGIN_FILE" ]; then
+            echo "ERRO: capacitor.plugins.json não foi encontrado."
+            exit 1
+          fi
+
+          echo "Arquivo de plugins:"
+          echo "$PLUGIN_FILE"
+          cat "$PLUGIN_FILE"
+
+          for PLUGIN_PACKAGE in \
+            "@capacitor/app" \
+            "@capacitor/browser" \
+            "@capacitor-firebase/authentication"; do
+            if ! grep -q "$PLUGIN_PACKAGE" "$PLUGIN_FILE"; then
+              echo "ERRO: $PLUGIN_PACKAGE não entrou no APK."
+              exit 1
+            fi
+          done
+
+          if ! grep -q \
+            "capacitor-firebase-authentication" \
+            android/capacitor.settings.gradle; then
+            echo "ERRO: módulo Android do Firebase não foi registrado."
+            exit 1
+          fi
+
+          if ! grep -q \
+            "capacitor-firebase-authentication" \
+            android/app/capacitor.build.gradle; then
+            echo "ERRO: dependência Android do Firebase está ausente."
+            exit 1
+          fi
+
+          echo "App, Browser e FirebaseAuthentication incorporados ao Android."
+
+      - name: Verificar configuração Firebase Android
+        run: |
+          if [ ! -f "android/app/google-services.json" ]; then
+            echo "ERRO: google-services.json não foi copiado."
+            exit 1
+          fi
+
+          if ! grep -q \
+            '"com.jsonia.appeden"' \
+            android/app/google-services.json; then
+            echo "ERRO: pacote Android incorreto no Firebase."
+            exit 1
+          fi
+
+          if ! grep -q \
+            "rgcfaIncludeGoogle" \
+            android/variables.gradle; then
+            echo "ERRO: rgcfaIncludeGoogle não foi configurado."
+            exit 1
+          fi
+
+          if ! grep -q \
+            "androidxCredentialsVersion" \
+            android/variables.gradle; then
+            echo "ERRO: androidxCredentialsVersion está ausente."
+            exit 1
+          fi
+
+          if ! grep -q \
+            '"google.com"' \
+            android/app/src/main/assets/capacitor.config.json; then
+            echo "ERRO: provedor Google ausente na configuração."
+            exit 1
+          fi
+
+          echo "Configuração Firebase Android confirmada."
+
+      - name: Restaurar chave de assinatura
+        env:
+          ANDROID_KEYSTORE_BASE64: "${{ secrets.ANDROID_KEYSTORE_BASE64 }}"
+          ANDROID_KEYSTORE_PASSWORD: "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
+          ANDROID_KEY_ALIAS: "${{ secrets.ANDROID_KEY_ALIAS }}"
+          ANDROID_KEY_PASSWORD: "${{ secrets.ANDROID_KEY_PASSWORD }}"
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "ERRO: Secret ANDROID_KEYSTORE_BASE64 ausente."
+            exit 1
+          fi
+
+          if [ -z "$ANDROID_KEYSTORE_PASSWORD" ]; then
+            echo "ERRO: Secret ANDROID_KEYSTORE_PASSWORD ausente."
+            exit 1
+          fi
+
+          if [ -z "$ANDROID_KEY_ALIAS" ]; then
+            echo "ERRO: Secret ANDROID_KEY_ALIAS ausente."
+            exit 1
+          fi
+
+          if [ -z "$ANDROID_KEY_PASSWORD" ]; then
+            echo "ERRO: Secret ANDROID_KEY_PASSWORD ausente."
+            exit 1
+          fi
+
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" \
+            | base64 --decode \
+            > android/app/app-eden-upload.jks
+
+          keytool -list \
+            -keystore android/app/app-eden-upload.jks \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" \
+            -alias "$ANDROID_KEY_ALIAS" \
+            > /dev/null
+
+          echo "Chave de assinatura restaurada."
+
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Compilar AAB assinado
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
+          ANDROID_KEY_ALIAS: "${{ secrets.ANDROID_KEY_ALIAS }}"
+          ANDROID_KEY_PASSWORD: "${{ secrets.ANDROID_KEY_PASSWORD }}"
+        run: |
+          chmod +x gradlew
+
+          ./gradlew bundleRelease \
+            --no-daemon \
+            --stacktrace \
+            "-Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/android/app/app-eden-upload.jks" \
+            "-Pandroid.injected.signing.store.password=$ANDROID_KEYSTORE_PASSWORD" \
+            "-Pandroid.injected.signing.key.alias=$ANDROID_KEY_ALIAS" \
+            "-Pandroid.injected.signing.key.password=$ANDROID_KEY_PASSWORD"
+
+      - name: Verificar e preparar AAB Play Store
+        run: |
+          set -euo pipefail
+
+          mkdir -p saida-play
+
+          AAB_ORIGINAL=$(find \
+            android/app/build/outputs/bundle/release \
+            -type f \
+            -name "*.aab" \
+            | head -n 1)
+
+          if [ -z "$AAB_ORIGINAL" ]; then
+            echo "ERRO: AAB não foi encontrado."
+            exit 1
+          fi
+
+          echo "AAB original: $AAB_ORIGINAL"
+
+          jarsigner -verify \
+            -verbose \
+            -certs \
+            "$AAB_ORIGINAL" \
+            > saida-play/verificacao-assinatura.txt 2>&1 || {
+              cat saida-play/verificacao-assinatura.txt
+              echo "ERRO: assinatura do AAB inválida."
+              exit 1
+            }
+
+          if grep -qi "jar is unsigned" \
+            saida-play/verificacao-assinatura.txt; then
+            cat saida-play/verificacao-assinatura.txt
+            echo "ERRO: o AAB está sem assinatura."
+            exit 1
+          fi
+
+          cp \
+            "$AAB_ORIGINAL" \
+            "saida-play/Igreja-Batista-Eden-V65-PLAY-STORE.aab"
+
+          cp \
+            play-store-build.json \
+            saida-play/play-store-build.json
+
+          sha256sum \
+            "saida-play/Igreja-Batista-Eden-V65-PLAY-STORE.aab" \
+            > "saida-play/Igreja-Batista-Eden-V65-PLAY-STORE.aab.sha256"
+
+          unzip -t \
+            "saida-play/Igreja-Batista-Eden-V65-PLAY-STORE.aab" \
+            | tail -n 5
+
+          echo "AAB Play Store assinado e validado."
+
+      - name: Publicar AAB como artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: Igreja-Batista-Eden-AAB-Play-Store
+          path: |
+            saida-play/Igreja-Batista-Eden-V65-PLAY-STORE.aab
+            saida-play/Igreja-Batista-Eden-V65-PLAY-STORE.aab.sha256
+            saida-play/play-store-build.json
+            saida-play/verificacao-assinatura.txt
+          retention-days: 30
+          if-no-files-found: error
