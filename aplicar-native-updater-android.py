@@ -138,13 +138,17 @@ public class NativeUpdaterPlugin extends Plugin {
             );
         }
 
+        params.setSize(apkFile.length());
+
         int sessionId = installer.createSession(params);
         PackageInstaller.Session session = installer.openSession(sessionId);
 
         try (
             InputStream input = new BufferedInputStream(new FileInputStream(apkFile));
-            OutputStream output = new BufferedOutputStream(
-                session.openWrite("Igreja-Batista-Eden.apk", 0, apkFile.length())
+            OutputStream output = session.openWrite(
+                "Igreja-Batista-Eden.apk",
+                0,
+                apkFile.length()
             )
         ) {
             byte[] buffer = new byte[64 * 1024];
@@ -152,7 +156,11 @@ public class NativeUpdaterPlugin extends Plugin {
             while ((read = input.read(buffer)) != -1) {
                 output.write(buffer, 0, read);
             }
+
             output.flush();
+
+            // O Android exige o MESMO OutputStream retornado por
+            // session.openWrite() ao chamar fsync().
             session.fsync(output);
         }
 
@@ -196,7 +204,7 @@ public class NativeUpdaterPlugin extends Plugin {
             connection = (HttpURLConnection) currentUrl.openConnection();
             connection.setConnectTimeout(20000);
             connection.setReadTimeout(90000);
-            connection.setRequestProperty("User-Agent", "App-Eden-Android-Updater/2.0");
+            connection.setRequestProperty("User-Agent", "App-Eden-Android-Updater/2.1");
             connection.setRequestProperty("Accept", "application/octet-stream,*/*");
             connection.setInstanceFollowRedirects(false);
 
