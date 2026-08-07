@@ -1,13 +1,13 @@
 {
   "channel": "membros",
   "channelLabel": "Membros",
-  "versionCode": 1054,
-  "versionName": "1.0.54",
+  "versionCode": 1055,
+  "versionName": "1.0.55",
   "apkUrl": "https://github.com/Gilmar46/App-Eden-/releases/download/app-eden-membros-latest/Igreja-Batista-Eden-MEMBROS.apk",
-  "notes": "Correção definitiva da atualização automática.\nO aplicativo agora verifica novas versões em toda abertura.\nPresença, mensagens, logs e escalas preservados.",
+  "notes": "Botão Cadastrar adicionado à tela de entrada.\nCadastro seguro usando a conta Google.\nContas comuns permanecem sem acesso ao Painel Master.",
   "mandatory": false,
-  "publishedAt": "2026-08-07T03:07:05.409666+00:00",
-  "sha256": "6d38b241a5f2dde275705ef7f163d178e80d1a9e1d3ac6cd9bfe1f9ee89b313b",
+  "publishedAt": "2026-08-07T09:45:52.764942+00:00",
+  "sha256": "d27b6f4e147a8a364b30cf9888db37abe50a03efaf48034b22681b7a3dd06cfb",
   "releaseTag": "app-eden-membros-latest",
   "assetName": "Igreja-Batista-Eden-MEMBROS.apk"
 }
