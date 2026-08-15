@@ -29,7 +29,7 @@ jobs:
           cache: npm
 
       - name: Configurar Java
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "21"
@@ -461,11 +461,8 @@ jobs:
 
           grep -q "Nova versão disponível" src/AppUpdate.tsx
           grep -q "Atualizar agora" src/AppUpdate.tsx
-          grep -q "downloadProgress" src/AppUpdate.tsx
-          grep -q "APP_UPDATE_VERSION_CODE" src/AppUpdate.tsx
-          grep -q "UPDATE_RECHECK_INTERVAL_MS" src/AppUpdate.tsx
-          grep -q "fetchUpdateManifest" src/AppUpdate.tsx
-          grep -q "NativeUpdater.downloadAndInstall" src/AppUpdate.tsx
+          grep -q "App.getInfo" src/AppUpdate.tsx
+          grep -q "Browser.open" src/AppUpdate.tsx
 
           node -e "JSON.parse(require('fs').readFileSync('app-update-build.json', 'utf8')); console.log('Metadados de atualização válidos.')"
 
@@ -589,7 +586,6 @@ jobs:
 
           python3 aplicar-igreja-batista-eden-v2.py --android-only
           python3 aplicar-igreja-batista-eden-v4.py --android-only
-          python3 aplicar-native-updater-android.py
 
       - name: Configurar versão Android do canal
         run: |
@@ -768,7 +764,7 @@ jobs:
       - name: Configurar Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Compilar APK assinado
+      - name: Compilar APK e AAB assinados
         working-directory: android
         env:
           ANDROID_KEYSTORE_PASSWORD: "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
@@ -777,7 +773,7 @@ jobs:
         run: |
           chmod +x gradlew
 
-          ./gradlew assembleRelease \
+          ./gradlew assembleRelease bundleRelease \
             --no-daemon \
             --stacktrace \
             "-Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/android/app/app-eden-upload.jks" \
@@ -838,6 +834,50 @@ jobs:
           path: saida/*.apk
           retention-days: 30
           if-no-files-found: error
+
+      - name: Verificar e preparar AAB para Google Play
+        run: |
+          set -euo pipefail
+
+          mkdir -p saida
+
+          AAB_ORIGINAL=$(find             android/app/build/outputs/bundle/release             -maxdepth 1             -type f             -name "*.aab"             | head -n 1)
+
+          if [ -z "$AAB_ORIGINAL" ]; then
+            echo "ERRO: AAB não foi encontrado."
+            exit 1
+          fi
+
+          CHANNEL=$(node -p             "JSON.parse(require('fs').readFileSync('app-update-build.json', 'utf8')).channel")
+
+          VERSION_NAME=$(node -p             "JSON.parse(require('fs').readFileSync('app-update-build.json', 'utf8')).versionName")
+
+          if [ "$CHANNEL" = "master" ]; then
+            AAB_NAME="Igreja-Batista-Eden-MASTER-${VERSION_NAME}.aab"
+          elif [ "$CHANNEL" = "membros" ]; then
+            AAB_NAME="Igreja-Batista-Eden-MEMBROS-${VERSION_NAME}.aab"
+          else
+            echo "ERRO: canal desconhecido: $CHANNEL"
+            exit 1
+          fi
+
+          jarsigner -verify "$AAB_ORIGINAL" >/dev/null
+
+          cp "$AAB_ORIGINAL" "saida/$AAB_NAME"
+          sha256sum "saida/$AAB_NAME" > "saida/$AAB_NAME.sha256"
+
+          echo "AAB assinado e preparado: saida/$AAB_NAME"
+
+      - name: Publicar AAB para Google Play
+        uses: actions/upload-artifact@v4
+        with:
+          name: Igreja-Batista-Eden-AAB-Assinado
+          path: |
+            saida/*.aab
+            saida/*.aab.sha256
+          retention-days: 30
+          if-no-files-found: error
+
 
       - name: Publicar atualização automática do App Éden
         env:
