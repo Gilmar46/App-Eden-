@@ -764,7 +764,7 @@ jobs:
       - name: Configurar Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Compilar APK e AAB assinados
+      - name: Compilar APK assinado
         working-directory: android
         env:
           ANDROID_KEYSTORE_PASSWORD: "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
@@ -827,41 +827,37 @@ jobs:
 
           echo "APK assinado e preparado: saida/$ASSET_NAME"
 
-      - name: Publicar APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: Igreja-Batista-Eden-APK-Assinado
-          path: saida/*.apk
-          retention-days: 30
-          if-no-files-found: error
-
       - name: Verificar e preparar AAB para Google Play
         run: |
-          set -euo pipefail
-
-          mkdir -p saida
-
-          AAB_ORIGINAL=$(find             android/app/build/outputs/bundle/release             -maxdepth 1             -type f             -name "*.aab"             | head -n 1)
+          AAB_ORIGINAL=$(find \
+            android/app/build/outputs/bundle/release \
+            -maxdepth 1 \
+            -type f \
+            -name "*.aab" \
+            | head -n 1)
 
           if [ -z "$AAB_ORIGINAL" ]; then
             echo "ERRO: AAB não foi encontrado."
             exit 1
           fi
 
-          CHANNEL=$(node -p             "JSON.parse(require('fs').readFileSync('app-update-build.json', 'utf8')).channel")
+          jarsigner -verify \
+            -verbose \
+            -certs \
+            "$AAB_ORIGINAL" \
+            > /dev/null
 
-          VERSION_NAME=$(node -p             "JSON.parse(require('fs').readFileSync('app-update-build.json', 'utf8')).versionName")
+          CHANNEL=$(node -p \
+            "JSON.parse(require('fs').readFileSync('app-update-build.json', 'utf8')).channel")
 
           if [ "$CHANNEL" = "master" ]; then
-            AAB_NAME="Igreja-Batista-Eden-MASTER-${VERSION_NAME}.aab"
+            AAB_NAME="Igreja-Batista-Eden-MASTER.aab"
           elif [ "$CHANNEL" = "membros" ]; then
-            AAB_NAME="Igreja-Batista-Eden-MEMBROS-${VERSION_NAME}.aab"
+            AAB_NAME="Igreja-Batista-Eden-MEMBROS.aab"
           else
-            echo "ERRO: canal desconhecido: $CHANNEL"
+            echo "ERRO: canal desconhecido para o AAB: $CHANNEL"
             exit 1
           fi
-
-          jarsigner -verify "$AAB_ORIGINAL" >/dev/null
 
           cp "$AAB_ORIGINAL" "saida/$AAB_NAME"
           sha256sum "saida/$AAB_NAME" > "saida/$AAB_NAME.sha256"
@@ -871,13 +867,18 @@ jobs:
       - name: Publicar AAB para Google Play
         uses: actions/upload-artifact@v4
         with:
-          name: Igreja-Batista-Eden-AAB-Assinado
-          path: |
-            saida/*.aab
-            saida/*.aab.sha256
+          name: Igreja-Batista-Eden-AAB
+          path: saida/*.aab
           retention-days: 30
           if-no-files-found: error
 
+      - name: Publicar APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Igreja-Batista-Eden-APK-Assinado
+          path: saida/*.apk
+          retention-days: 30
+          if-no-files-found: error
 
       - name: Publicar atualização automática do App Éden
         env:
