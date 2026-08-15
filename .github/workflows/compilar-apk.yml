@@ -764,7 +764,7 @@ jobs:
       - name: Configurar Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Compilar APK assinado
+      - name: Compilar APK e AAB assinados
         working-directory: android
         env:
           ANDROID_KEYSTORE_PASSWORD: "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
@@ -827,8 +827,18 @@ jobs:
 
           echo "APK assinado e preparado: saida/$ASSET_NAME"
 
+      - name: Publicar APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Igreja-Batista-Eden-APK-Assinado
+          path: saida/*.apk
+          retention-days: 30
+          if-no-files-found: error
+
       - name: Verificar e preparar AAB para Google Play
         run: |
+          mkdir -p saida-play
+
           AAB_ORIGINAL=$(find \
             android/app/build/outputs/bundle/release \
             -maxdepth 1 \
@@ -841,42 +851,29 @@ jobs:
             exit 1
           fi
 
-          jarsigner -verify \
-            -verbose \
-            -certs \
-            "$AAB_ORIGINAL" \
-            > /dev/null
+          jarsigner -verify -verbose -certs "$AAB_ORIGINAL" >/dev/null
 
           CHANNEL=$(node -p \
             "JSON.parse(require('fs').readFileSync('app-update-build.json', 'utf8')).channel")
+          VERSION_NAME=$(node -p \
+            "JSON.parse(require('fs').readFileSync('app-update-build.json', 'utf8')).versionName")
 
           if [ "$CHANNEL" = "master" ]; then
-            AAB_NAME="Igreja-Batista-Eden-MASTER.aab"
-          elif [ "$CHANNEL" = "membros" ]; then
-            AAB_NAME="Igreja-Batista-Eden-MEMBROS.aab"
+            AAB_NAME="Igreja-Batista-Eden-MASTER-${VERSION_NAME}.aab"
           else
-            echo "ERRO: canal desconhecido para o AAB: $CHANNEL"
-            exit 1
+            AAB_NAME="Igreja-Batista-Eden-MEMBROS-${VERSION_NAME}.aab"
           fi
 
-          cp "$AAB_ORIGINAL" "saida/$AAB_NAME"
-          sha256sum "saida/$AAB_NAME" > "saida/$AAB_NAME.sha256"
+          cp "$AAB_ORIGINAL" "saida-play/$AAB_NAME"
+          sha256sum "saida-play/$AAB_NAME" > "saida-play/$AAB_NAME.sha256"
 
-          echo "AAB assinado e preparado: saida/$AAB_NAME"
+          echo "AAB assinado e preparado: saida-play/$AAB_NAME"
 
       - name: Publicar AAB para Google Play
         uses: actions/upload-artifact@v4
         with:
-          name: Igreja-Batista-Eden-AAB
-          path: saida/*.aab
-          retention-days: 30
-          if-no-files-found: error
-
-      - name: Publicar APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: Igreja-Batista-Eden-APK-Assinado
-          path: saida/*.apk
+          name: Igreja-Batista-Eden-AAB-Google-Play
+          path: saida-play/*.aab
           retention-days: 30
           if-no-files-found: error
 
