@@ -103,6 +103,32 @@ import { useAuthState } from 'react-firebase-hooks/auth';
 import { useCollectionData, useCollection } from 'react-firebase-hooks/firestore';
 import { auth, db } from './lib/firebase';
 
+
+// EDEN_N8N_INTEGRACAO_V1
+type EdenTipoRegistro = 'presenca' | 'estudo_biblico' | 'leitura_diaria';
+type EdenDadosRegistro = Record<string, string | number | boolean | undefined>;
+
+// Para uso fora da rede local, substitua por um endereco HTTPS permanente.
+const EDEN_N8N_WEBHOOK_URL = "https://expose-faculty-yogurt.ngrok-free.dev/webhook/eden/registro";
+
+const edenDataReferencia = (valor?: unknown): string => {
+  const texto = String(valor || '').trim();
+  const formatoIso = texto.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (formatoIso) return `${formatoIso[1]}-${formatoIso[2]}-${formatoIso[3]}`;
+
+  const formatoBrasileiro = texto.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/);
+  if (formatoBrasileiro) {
+    return `${formatoBrasileiro[3]}-${formatoBrasileiro[2].padStart(2, '0')}-${formatoBrasileiro[1].padStart(2, '0')}`;
+  }
+
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Bahia',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+};
+
 // --- Types ---
 type View = 'home' | 'bible' | 'donations' | 'prayers' | 'profile' | 'ministries' | 'agenda' | 'financial' | 'spiritual' | 'more' | 'members' | 'missions' | 'chat' | 'devotionals' | 'admin' | 'lives' | 'guests' | 'courses' | 'locations' | 'announcements' | 'ai-chat' | 'news' | 'fake-news';
 
@@ -909,6 +935,75 @@ export default function App() {
   const [bibleSearchQuery, setBibleSearchQuery] = useState("");
   const [bibleSearchResults, setBibleSearchResults] = useState<any[] | null>(null);
   const [isSearchingBible, setIsSearchingBible] = useState(false);
+
+  const [edenRegistroEmAndamento, setEdenRegistroEmAndamento] = useState<EdenTipoRegistro | null>(null);
+
+  const registrarAtividadeEden = async (
+    tipo: EdenTipoRegistro,
+    detalhes: EdenDadosRegistro = {},
+  ): Promise<boolean> => {
+    const membroAutenticado = auth.currentUser;
+    if (!membroAutenticado) {
+      alert('Faça login novamente para registrar sua atividade.');
+      return false;
+    }
+
+    if (edenRegistroEmAndamento) return false;
+
+    setEdenRegistroEmAndamento(tipo);
+    const controlador = new AbortController();
+    const limite = window.setTimeout(() => controlador.abort(), 20000);
+
+    const nomes: Record<EdenTipoRegistro, string> = {
+      presenca: 'Presença',
+      estudo_biblico: 'Estudo bíblico',
+      leitura_diaria: 'Leitura diária',
+    };
+
+    try {
+      const tokenFirebase = await membroAutenticado.getIdToken();
+      const resposta = await fetch(EDEN_N8N_WEBHOOK_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${tokenFirebase}`,
+        },
+        body: JSON.stringify({
+          tipo,
+          data_referencia: edenDataReferencia(detalhes.data_referencia),
+          concluido: true,
+          ...detalhes,
+        }),
+        signal: controlador.signal,
+      });
+
+      const corpo = await resposta.text();
+      let retorno: { sucesso?: boolean; mensagem?: string } = {};
+      try {
+        retorno = corpo ? JSON.parse(corpo) : {};
+      } catch {
+        throw new Error(`Resposta inesperada do servidor (${resposta.status}).`);
+      }
+
+      if (!resposta.ok || retorno.sucesso !== true) {
+        throw new Error(retorno.mensagem || `Servidor respondeu ${resposta.status}.`);
+      }
+
+      alert(`${nomes[tipo]} registrada com sucesso!`);
+      return true;
+    } catch (falha) {
+      const mensagem = falha instanceof Error
+        ? (falha.name === 'AbortError' ? 'O servidor demorou para responder.' : falha.message)
+        : 'Falha desconhecida ao registrar a atividade.';
+      console.error('Falha ao registrar atividade do App Eden:', mensagem);
+      alert(`Não foi possível registrar ${nomes[tipo].toLowerCase()}.\n${mensagem}`);
+      return false;
+    } finally {
+      window.clearTimeout(limite);
+      setEdenRegistroEmAndamento(null);
+    }
+  };
+
   const handleGoogleLogin = async () => {
     const provider = new GoogleAuthProvider();
     try {
@@ -1370,6 +1465,17 @@ export default function App() {
       setConfirmedScales(newConfirmed);
       if (userProfileRef) {
         await updateDoc(userProfileRef, { confirmedScales: newConfirmed });
+      }
+
+      // Nunca atribui ao administrador uma presenca de outro membro.
+      if (newStatus === 'confirmed' && userMember?.id && scale?.memberId === userMember.id) {
+        await registrarAtividadeEden('presenca', {
+          evento_id: String(scale?.id || id),
+          evento_nome: String(scale?.ministry || 'Escala da igreja'),
+          data_referencia: edenDataReferencia(scale?.date),
+          data_evento: edenDataReferencia(scale?.date),
+          ministerio: String(scale?.ministry || ''),
+        });
       }
     } catch (err) {
       console.error("Erro ao atualizar escala:", err);
@@ -2823,6 +2929,25 @@ Retorne RIGOROSAMENTE um JSON com este schema:
                   ))}
                 </div>
                 
+
+                <div className="mt-8">
+                  <button
+                    type="button"
+                    onClick={() => void registrarAtividadeEden('leitura_diaria', {
+                      livro: selectedBibleBook || 'Leitura diária',
+                      capitulo: String(selectedBibleChapter),
+                      data_referencia: edenDataReferencia(),
+                      concluido: true,
+                    })}
+                    disabled={edenRegistroEmAndamento !== null}
+                    className="w-full rounded-[24px] bg-emerald-600 px-6 py-4 text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-emerald-600/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {edenRegistroEmAndamento === 'leitura_diaria'
+                      ? 'Registrando leitura...'
+                      : 'Marcar leitura diária como concluída'}
+                  </button>
+                </div>
+
                 <div className="mt-12 flex justify-center">
                   <button 
                     onClick={() => {
@@ -7189,6 +7314,22 @@ Retorne RIGOROSAMENTE um JSON com este schema:
                 <CommentSection contentId={activeVideo?.id} user={user} isAdmin={isAdmin} userRole={userRole} />
               </div>
             </div>
+
+            <button
+              type="button"
+              onClick={() => void registrarAtividadeEden('estudo_biblico', {
+                estudo_id: String(activeVideo?.id || `ESTUDO-${edenDataReferencia()}`),
+                titulo: String(activeVideo?.title || 'Estudo bíblico do dia'),
+                data_referencia: edenDataReferencia(),
+                concluido: true,
+              })}
+              disabled={edenRegistroEmAndamento !== null}
+              className="w-full mt-6 rounded-3xl bg-indigo-600 py-4.5 text-[10px] font-black uppercase tracking-widest text-white shadow-xl shadow-indigo-600/20 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {edenRegistroEmAndamento === 'estudo_biblico'
+                ? 'Registrando estudo...'
+                : 'Marcar estudo bíblico como concluído'}
+            </button>
             <button 
               onClick={() => setActiveVideo(null)}
               className="w-full mt-6 py-4.5 bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest rounded-3xl"
@@ -7234,11 +7375,25 @@ Retorne RIGOROSAMENTE um JSON com este schema:
               <CommentSection contentId={selectedAgendaItem?.id} user={user} isAdmin={isAdmin} userRole={userRole} />
             </div>
 
-            <button 
-              onClick={() => setSelectedAgendaItem(null)}
-              className="w-full mt-6 py-4.5 bg-primary text-white text-[10px] font-black uppercase tracking-widest rounded-3xl shadow-xl shadow-primary/20 active:scale-95 transition-all"
+
+            <button
+              type="button"
+              onClick={async () => {
+                const dataEvento = edenDataReferencia(selectedAgendaItem?.date);
+                const registrado = await registrarAtividadeEden('presenca', {
+                  evento_id: String(selectedAgendaItem?.id || `CULTO-${dataEvento}`),
+                  evento_nome: String(selectedAgendaItem?.title || 'Culto da igreja'),
+                  data_referencia: dataEvento,
+                  data_evento: dataEvento,
+                });
+                if (registrado) setSelectedAgendaItem(null);
+              }}
+              disabled={edenRegistroEmAndamento !== null}
+              className="w-full mt-6 py-4.5 bg-primary text-white text-[10px] font-black uppercase tracking-widest rounded-3xl shadow-xl shadow-primary/20 active:scale-95 transition-all disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Confirmar Presença
+              {edenRegistroEmAndamento === 'presenca'
+                ? 'Registrando presença...'
+                : 'Confirmar Presença'}
             </button>
           </div>
         </EditModal>
