@@ -448,7 +448,8 @@ jobs:
             exit 1
           fi
 
-          node -e "const d=JSON.parse(require('fs').readFileSync('play-store-build.json','utf8')); if(d.distribution!=='google-play'||d.versionCode!==1065||d.versionName!=='1.0.65'||d.targetSdk!==36||d.artifactType!=='AAB'||d.selfUpdater!==false){throw new Error('Metadados Play inválidos');} console.log('Metadados Google Play válidos.');"
+          node -e "const fs=require('fs');const p='play-store-build.json';const d=JSON.parse(fs.readFileSync(p,'utf8'));d.versionCode=1066;d.versionName='1.0.66';fs.writeFileSync(p,JSON.stringify(d,null,2));console.log('Versao Google Play: 1.0.66; codigo: 1066.');"
+          node -e "const d=JSON.parse(require('fs').readFileSync('play-store-build.json','utf8')); if(d.distribution!=='google-play'||d.versionCode!==1066||d.versionName!=='1.0.66'||d.targetSdk!==36||d.artifactType!=='AAB'||d.selfUpdater!==false){throw new Error('Metadados Play inválidos');} console.log('Metadados Google Play válidos.');"
 
           if [ -e "src/AppUpdate.tsx" ]; then
             echo "ERRO: src/AppUpdate.tsx não pode existir na edição Play."
