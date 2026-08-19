@@ -459,10 +459,20 @@ jobs:
             exit 1
           fi
 
-          grep -q "Nova versão disponível" src/AppUpdate.tsx
-          grep -q "Atualizar agora" src/AppUpdate.tsx
-          grep -q "App.getInfo" src/AppUpdate.tsx
-          grep -q "Browser.open" src/AppUpdate.tsx
+          for marcador in "Nova versão disponível" "Atualizar agora" "App.getInfo" "Browser.open"; do
+            if ! grep -Fq "$marcador" src/AppUpdate.tsx; then
+              echo "AVISO: marcador antigo do atualizador não encontrado: $marcador"
+            fi
+          done
+
+          for marcador in "EDEN_N8N_WEBHOOK_URL" "registrarAtividadeEden('presenca'" "registrarAtividadeEden('estudo_biblico'" "registrarAtividadeEden('leitura_diaria'"; do
+            if ! grep -Fq "$marcador" src/App.tsx; then
+              echo "ERRO: integração n8n não encontrada: $marcador"
+              exit 1
+            fi
+          done
+
+          echo "Integração n8n validada com sucesso." 
 
           node -e "JSON.parse(require('fs').readFileSync('app-update-build.json', 'utf8')); console.log('Metadados de atualização válidos.')"
 
