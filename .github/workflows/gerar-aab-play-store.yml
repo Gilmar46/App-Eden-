@@ -38,6 +38,8 @@ jobs:
             @capacitor/android@8 \
             @capacitor/app@8 \
             @capacitor/browser@8 \
+            @capacitor/filesystem@8 \
+            @capacitor/share@8 \
             @capacitor-firebase/authentication@8
 
           npm install --save-dev --save-exact \
@@ -55,6 +57,8 @@ jobs:
             '@capacitor/android',
             '@capacitor/app',
             '@capacitor/browser',
+            '@capacitor/filesystem',
+            '@capacitor/share',
             '@capacitor-firebase/authentication'
           ];
 
@@ -448,8 +452,8 @@ jobs:
             exit 1
           fi
 
-          node -e "const fs=require('fs');const p='play-store-build.json';const d=JSON.parse(fs.readFileSync(p,'utf8'));d.versionCode=1066;d.versionName='1.0.66';fs.writeFileSync(p,JSON.stringify(d,null,2));console.log('Versao Google Play: 1.0.66; codigo: 1066.');"
-          node -e "const d=JSON.parse(require('fs').readFileSync('play-store-build.json','utf8')); if(d.distribution!=='google-play'||d.versionCode!==1066||d.versionName!=='1.0.66'||d.targetSdk!==36||d.artifactType!=='AAB'||d.selfUpdater!==false){throw new Error('Metadados Play inválidos');} console.log('Metadados Google Play válidos.');"
+          node -e "const fs=require('fs');const p='play-store-build.json';const d=JSON.parse(fs.readFileSync(p,'utf8'));d.versionCode=1068;d.versionName='1.0.68';fs.writeFileSync(p,JSON.stringify(d,null,2));console.log('Versao Google Play: 1.0.68; codigo: 1068.');"
+          node -e "const d=JSON.parse(require('fs').readFileSync('play-store-build.json','utf8')); if(d.distribution!=='google-play'||d.versionCode!==1068||d.versionName!=='1.0.68'||d.targetSdk!==36||d.artifactType!=='AAB'||d.selfUpdater!==false){throw new Error('Metadados Play inválidos');} console.log('Metadados Google Play válidos.');"
 
           if [ -e "src/AppUpdate.tsx" ]; then
             echo "ERRO: src/AppUpdate.tsx não pode existir na edição Play."
@@ -490,6 +494,9 @@ jobs:
           grep -q "gilmarcoutobrito@gmail.com" src/App.tsx
 
           echo "Visual e versão Play V65 da Igreja Batista Éden aplicados e revisados."
+
+      - name: Aplicar revisao Master, Web e Mobile V68
+        run: python3 aplicar-revisao-master-web-v68.py --aplicar-build
 
       - name: Revisar arquivos antes da compilação
         run: |
@@ -761,6 +768,8 @@ jobs:
           for PLUGIN_PACKAGE in \
             "@capacitor/app" \
             "@capacitor/browser" \
+            "@capacitor/filesystem" \
+            "@capacitor/share" \
             "@capacitor-firebase/authentication"; do
             if ! grep -q "$PLUGIN_PACKAGE" "$PLUGIN_FILE"; then
               echo "ERRO: $PLUGIN_PACKAGE não entrou no APK."

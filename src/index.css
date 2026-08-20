@@ -47,3 +47,47 @@
 .stat-box-blue { @apply bg-[#E0E7FF] text-[#4338CA]; }
 .stat-box-green { @apply bg-[#DCFCE7] text-[#15803D]; }
 .stat-box-orange { @apply bg-[#FFEDD5] text-[#C2410C]; }
+
+/* EDEN_REVISAO_MOBILE_E_MENU_V68 */
+.eden-sidebar-scroll {
+  scrollbar-color: rgba(111, 125, 170, 0.45) transparent;
+  scrollbar-width: thin;
+}
+
+.eden-sidebar-scroll::-webkit-scrollbar {
+  width: 7px;
+}
+
+.eden-sidebar-scroll::-webkit-scrollbar-thumb {
+  background: rgba(111, 125, 170, 0.45);
+  border-radius: 999px;
+}
+
+@media (max-width: 1023px) {
+  html,
+  body,
+  #root {
+    min-height: 100%;
+    width: 100%;
+  }
+
+  body {
+    overflow-x: hidden;
+    overscroll-behavior-x: none;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  .eden-app-shell,
+  .eden-page-stage,
+  .eden-active-view {
+    min-height: 100svh;
+  }
+
+  .eden-app-shell {
+    transition: none !important;
+  }
+
+  .eden-app-overlay {
+    display: none;
+  }
+}

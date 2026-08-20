@@ -44,6 +44,8 @@ jobs:
             @capacitor/android@8 \
             @capacitor/app@8 \
             @capacitor/browser@8 \
+            @capacitor/filesystem@8 \
+            @capacitor/share@8 \
             @capacitor-firebase/authentication@8
 
           npm install --save-dev --save-exact \
@@ -61,6 +63,8 @@ jobs:
             '@capacitor/android',
             '@capacitor/app',
             '@capacitor/browser',
+            '@capacitor/filesystem',
+            '@capacitor/share',
             '@capacitor-firebase/authentication'
           ];
 
@@ -504,6 +508,9 @@ jobs:
 
           echo "Visual e versão Master V2 da Igreja Batista Éden aplicados e revisados."
 
+      - name: Aplicar revisao Master, Web e Mobile V68
+        run: python3 aplicar-revisao-master-web-v68.py --aplicar-build
+
       - name: Revisar arquivos antes da compilação
         run: |
           python3 -m py_compile \
@@ -672,6 +679,8 @@ jobs:
           for PLUGIN_PACKAGE in \
             "@capacitor/app" \
             "@capacitor/browser" \
+            "@capacitor/filesystem" \
+            "@capacitor/share" \
             "@capacitor-firebase/authentication"; do
             if ! grep -q "$PLUGIN_PACKAGE" "$PLUGIN_FILE"; then
               echo "ERRO: $PLUGIN_PACKAGE não entrou no APK."
