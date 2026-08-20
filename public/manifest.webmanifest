@@ -1,0 +1,10 @@
+{
+  "name": "Igreja Batista Éden",
+  "short_name": "App Éden",
+  "start_url": "/App-Eden-/",
+  "scope": "/App-Eden-/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0f766e",
+  "lang": "pt-BR"
+}
