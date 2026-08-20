@@ -6,5 +6,13 @@
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#0f766e",
-  "lang": "pt-BR"
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "./igreja-batista-eden-logo.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
 }

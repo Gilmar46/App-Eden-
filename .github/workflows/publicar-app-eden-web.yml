@@ -49,6 +49,138 @@ jobs:
       - name: Instalar dependencias
         run: npm ci
 
+      - name: Aplicar visual Igreja Batista Éden
+        run: |
+          if [ ! -f "aplicar-unidade-viva.py" ]; then
+            echo "ERRO: aplicar-unidade-viva.py não foi encontrado na raiz."
+            exit 1
+          fi
+
+          if [ ! -f "aplicar-igreja-batista-eden-v2.py" ]; then
+            echo "ERRO: aplicar-igreja-batista-eden-v2.py não foi encontrado na raiz."
+            exit 1
+          fi
+
+          if [ ! -f "aplicar-igreja-batista-eden-v4.py" ]; then
+            echo "ERRO: aplicar-igreja-batista-eden-v4.py não foi encontrado na raiz."
+            exit 1
+          fi
+
+          if [ ! -f "aplicar-igreja-batista-eden-play-v65.py" ]; then
+            echo "ERRO: aplicar-igreja-batista-eden-play-v65.py não foi encontrado na raiz."
+            exit 1
+          fi
+
+          python3 aplicar-unidade-viva.py
+
+          # Corrigir automaticamente a versão v2 antes de executá-la.
+          # A versão enviada ao repositório contém barras duplicadas no regex
+          # e três nomes de ícones que não existem no import atual do App.tsx.
+          python3 <<'PY'
+          from pathlib import Path
+
+          script_path = Path("aplicar-igreja-batista-eden-v2.py")
+          script_text = script_path.read_text(encoding="utf-8")
+
+          replacements = [
+              (
+                  '    r"(?:^|\\\\n)\\\\s*const\\\\s+handleCreateMember\\\\s*=\\\\s*async\\\\s*"',
+                  '    r"(?:^|\\n)\\s*const\\s+handleCreateMember\\s*=\\s*async\\s*"'
+              ),
+              (
+                  '    r"\\\\(e:\\\\s*React\\\\.FormEvent\\\\)\\\\s*=>\\\\s*\\\\{.*?"',
+                  '    r"\\(e:\\s*React\\.FormEvent\\)\\s*=>\\s*\\{.*?"'
+              ),
+              (
+                  '    r"(?:^|\\\\n)\\\\s*const\\\\s+handleFetchNews\\\\s*=\\\\s*async"',
+                  '    r"(?:^|\\n)\\s*const\\s+handleFetchNews\\s*=\\s*async"'
+              ),
+              ("icon: HandHeart,", "icon: Heart,"),
+              ("icon: Phone,", "icon: MessageCircle,"),
+              ("icon: Globe2,", "icon: Languages,")
+          ]
+
+          for old, new in replacements:
+              if old in script_text:
+                  script_text = script_text.replace(old, new, 1)
+              elif new not in script_text:
+                  raise SystemExit(
+                      "ERRO: não foi possível corrigir um trecho do script v2."
+                  )
+
+          compile(
+              script_text,
+              str(script_path),
+              "exec"
+          )
+
+          script_path.write_text(
+              script_text,
+              encoding="utf-8"
+          )
+
+          print("Script Igreja Batista Éden v2 corrigido e validado.")
+          PY
+
+          python3 aplicar-igreja-batista-eden-v2.py
+          python3 aplicar-igreja-batista-eden-v4.py
+          python3 aplicar-igreja-batista-eden-play-v65.py
+
+          if [ ! -s "play-store-build.json" ]; then
+            echo "ERRO: play-store-build.json não foi criado."
+            exit 1
+          fi
+
+          node -e "const fs=require('fs');const p='play-store-build.json';const d=JSON.parse(fs.readFileSync(p,'utf8'));d.versionCode=1066;d.versionName='1.0.66';fs.writeFileSync(p,JSON.stringify(d,null,2));console.log('Versao Google Play: 1.0.66; codigo: 1066.');"
+          node -e "const d=JSON.parse(require('fs').readFileSync('play-store-build.json','utf8')); if(d.distribution!=='google-play'||d.versionCode!==1066||d.versionName!=='1.0.66'||d.targetSdk!==36||d.artifactType!=='AAB'||d.selfUpdater!==false){throw new Error('Metadados Play inválidos');} console.log('Metadados Google Play válidos.');"
+
+          if [ -e "src/AppUpdate.tsx" ]; then
+            echo "ERRO: src/AppUpdate.tsx não pode existir na edição Play."
+            exit 1
+          fi
+
+          if grep -q "import './AppUpdate';" src/App.tsx; then
+            echo "ERRO: import do atualizador externo ainda existe."
+            exit 1
+          fi
+
+          grep -q "duration: 55" src/App.tsx
+
+          if [ ! -f "public/igreja-batista-eden-logo.png" ]; then
+            echo "ERRO: o logotipo da Igreja Batista Éden não foi criado."
+            exit 1
+          fi
+
+          grep -q "Igreja Batista Éden" src/App.tsx
+          grep -q "case 'attendance':" src/App.tsx
+          grep -q "Marcar Presença" src/App.tsx
+          grep -q "Notícias de Fé" src/App.tsx
+          grep -q "Ministérios" src/App.tsx
+          grep -q "Eventos" src/App.tsx
+          grep -q "Pregações" src/App.tsx
+          grep -q "case 'bulletin-program':" src/App.tsx
+          grep -q "Programação do Culto" src/App.tsx
+
+          if grep -q "Comunidade Vida" src/App.tsx; then
+            echo "ERRO: ainda existe o nome Comunidade Vida no aplicativo."
+            exit 1
+          fi
+
+          grep -q "Aplicativo Master ativo" src/App.tsx
+          grep -q "PUBLICAR PARA TODOS OS MEMBROS" src/App.tsx
+          grep -q "Sincronizado com os membros" src/App.tsx
+          grep -q "worshipProgram" src/App.tsx
+          grep -q "gilmarcoutobrito@gmail.com" src/App.tsx
+
+          echo "Visual e versão Play V65 da Igreja Batista Éden aplicados e revisados."
+
+      - name: Verificar integracao com n8n
+        run: |
+          grep -Fq 'EDEN_N8N_WEBHOOK_URL' src/App.tsx
+          grep -Fq "registrarAtividadeEden('presenca'" src/App.tsx
+          grep -Fq "registrarAtividadeEden('estudo_biblico'" src/App.tsx
+          grep -Fq "registrarAtividadeEden('leitura_diaria'" src/App.tsx
+
       - name: Compilar aplicativo web
         run: npm run build -- --base=/App-Eden-/
 
